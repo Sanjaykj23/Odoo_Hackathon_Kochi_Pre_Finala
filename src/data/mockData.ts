@@ -345,7 +345,9 @@ export const INITIAL_SUBSCRIPTIONS: Subscription[] = [
       allowRenew: true
     },
     notes: 'Key enterprise account. Custom GST details attached.',
-    createdAt: '2026-01-15T10:30:00Z'
+    createdAt: '2026-01-15T10:30:00Z',
+    healthScore: 94,
+    churnRisk: 'LOW'
   },
   {
     id: 'sub_002',
@@ -380,7 +382,9 @@ export const INITIAL_SUBSCRIPTIONS: Subscription[] = [
       allowPause: true,
       allowRenew: true
     },
-    createdAt: '2026-03-01T14:15:00Z'
+    createdAt: '2026-03-01T14:15:00Z',
+    healthScore: 38,
+    churnRisk: 'HIGH'
   },
   {
     id: 'sub_003',

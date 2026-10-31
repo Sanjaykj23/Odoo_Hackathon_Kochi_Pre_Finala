@@ -243,6 +243,32 @@ export const CustomerPortal: React.FC = () => {
                     ))}
                   </div>
 
+                  {/* Retention Proposal Banner if Human Operator Dispatched */}
+                  {sub.retentionOfferSent && (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-500/50 text-white space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold font-mono text-[10px]">
+                          EXCLUSIVE RETENTION OFFER ({sub.retentionOfferSent.discountPct}% OFF)
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          Valid until {sub.retentionOfferSent.validUntil}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-200">
+                        {sub.retentionOfferSent.notes}
+                      </div>
+                      <button
+                        onClick={() => {
+                          acceptQuotationAndActivate(sub.id);
+                        }}
+                        className="w-full py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Accept & Apply {sub.retentionOfferSent.discountPct}% Retention Renewal</span>
+                      </button>
+                    </div>
+                  )}
+
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                     <span className="text-slate-400">Next Automatic Billing:</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-white">

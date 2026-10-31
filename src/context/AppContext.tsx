@@ -107,6 +107,12 @@ interface AppContextType {
   }) => boolean;
   addDiscountRule: (rule: Omit<DiscountRule, 'id' | 'usedCount'>) => void;
   toggleDiscountRule: (id: string) => void;
+  dispatchApprovedRetentionOffer: (
+    subId: string,
+    discountPct: number,
+    notes: string,
+    validityDays: number
+  ) => boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -717,6 +723,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Toggled discount rule status', 'info');
   };
 
+  const dispatchApprovedRetentionOffer = (
+    subId: string,
+    discountPct: number,
+    notes: string,
+    validityDays: number
+  ): boolean => {
+    const sub = subscriptions.find((s) => s.id === subId);
+    if (!sub) return false;
+
+    const today = new Date();
+    const validUntil = new Date(today);
+    validUntil.setDate(validUntil.getDate() + validityDays);
+
+    const offerData = {
+      discountPct,
+      notes: notes || `Special Retention Offer (${discountPct}% Loyalty Discount)`,
+      sentAt: today.toISOString().split('T')[0],
+      validUntil: validUntil.toISOString().split('T')[0],
+      approvedBy: currentUser.name
+    };
+
+    setSubscriptions((prev) =>
+      prev.map((s) =>
+        s.id === subId
+          ? {
+              ...s,
+              retentionOfferSent: offerData,
+              healthScore: Math.min(100, (s.healthScore || 50) + 35),
+              churnRisk: 'LOW',
+              notes: `${s.notes || ''}\n[Human Retention Approved]: ${discountPct}% Off approved by ${currentUser.name} on ${offerData.sentAt}. Note: ${offerData.notes}`
+            }
+          : s
+      )
+    );
+
+    addToast(
+      `Retention Offer (${discountPct}% Off) signed off by ${currentUser.name} and dispatched to ${sub.customerName}!`,
+      'success'
+    );
+    return true;
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -728,6 +776,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         theme,
         toggleTheme,
+        authenticatedUser,
         currentUser,
         setCurrentUser,
         switchRole,
@@ -764,7 +813,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelInvoice,
         recordPayment,
         addDiscountRule,
-        toggleDiscountRule
+        toggleDiscountRule,
+        dispatchApprovedRetentionOffer
       }}
     >
       {children}

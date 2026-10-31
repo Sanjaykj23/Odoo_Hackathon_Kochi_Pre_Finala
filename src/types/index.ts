@@ -106,6 +106,15 @@ export interface Subscription {
   closureRules: ClosureRules;
   notes?: string;
   createdAt: string;
+  healthScore?: number; // 0-100% Renewal Health Score
+  churnRisk?: 'LOW' | 'MEDIUM' | 'HIGH';
+  retentionOfferSent?: {
+    discountPct: number;
+    notes: string;
+    sentAt: string;
+    validUntil: string;
+    approvedBy: string;
+  };
 }
 
 export type InvoiceStatus = 'DRAFT' | 'CONFIRMED' | 'PAID' | 'CANCELLED';

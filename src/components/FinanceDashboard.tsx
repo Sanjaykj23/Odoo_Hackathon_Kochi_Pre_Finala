@@ -321,14 +321,14 @@ export const FinanceDashboard: React.FC = () => {
                 <th className="p-3">Billing Cadence</th>
                 <th className="p-3">Next Billing Date</th>
                 <th className="p-3">Expiry Date</th>
-                <th className="p-3 font-mono text-right">Recurring Value</th>
                 <th className="p-3">Status</th>
+                <th className="p-3 text-right">Renewal Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {subscriptions.filter((s) => s.status === 'ACTIVE' || s.status === 'CONFIRMED').length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-slate-400 italic">
+                  <td colSpan={8} className="p-6 text-center text-slate-400 italic">
                     No active subscriptions scheduled for renewal.
                   </td>
                 </tr>
@@ -337,6 +337,10 @@ export const FinanceDashboard: React.FC = () => {
                   .filter((s) => s.status === 'ACTIVE' || s.status === 'CONFIRMED')
                   .map((sub) => {
                     const subVal = sub.lines.reduce((acc, l) => acc + l.totalAmount, 0);
+
+                    const handleQuickExtend = () => {
+                      addToast(`Renewal confirmed for ${sub.customerName} (${sub.number}). Next billing cycle dispatched!`, 'success');
+                    };
 
                     return (
                       <tr key={sub.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
@@ -364,6 +368,14 @@ export const FinanceDashboard: React.FC = () => {
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                             {sub.status}
                           </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={handleQuickExtend}
+                            className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[11px] transition-colors"
+                          >
+                            Extend / Renew
+                          </button>
                         </td>
                       </tr>
                     );

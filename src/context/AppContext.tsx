@@ -430,6 +430,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
     setSubscriptions((prev) => [newSub, ...prev]);
+
+    if (newSub.appliedDiscountCode) {
+      setDiscounts((prev) =>
+        prev.map((d) =>
+          d.code.toUpperCase() === newSub.appliedDiscountCode?.toUpperCase()
+            ? { ...d, usedCount: d.usedCount + 1 }
+            : d
+        )
+      );
+    }
+
     addToast(`Created subscription ${newSub.number} (${newSub.status})`, 'success');
     return newSub;
   };
@@ -619,9 +630,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const cancelInvoice = (invoiceId: string) => {
     setInvoices((prev) =>
-      prev.map((inv) => (inv.id === invoiceId ? { ...inv, status: 'CANCELLED' } : inv))
+      prev.map((inv) => (inv.id === invoiceId ? { ...inv, status: 'CANCELLED', balanceDue: 0 } : inv))
     );
-    addToast('Invoice cancelled', 'info');
+    addToast('Invoice cancelled and balance zeroed out', 'info');
   };
 
   // Payment Logging

@@ -279,6 +279,23 @@ export const InvoicesView: React.FC = () => {
                                 <Printer className="w-3.5 h-3.5" />
                               </button>
 
+                              {inv.status === 'DRAFT' && (
+                                <button
+                                  onClick={() => confirmInvoice(inv.id)}
+                                  className="px-2.5 py-1 rounded-xl bg-[#E5F0FA] hover:bg-[#D5E6F5] text-[#2C6EA6] border border-[#D5E6F5] text-[11px] font-semibold transition-colors"
+                                >
+                                  Confirm
+                                </button>
+                              )}
+                              {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && (
+                                <button
+                                  onClick={() => cancelInvoice(inv.id)}
+                                  className="px-2 py-1 rounded-xl hover:bg-[#FFEBEB] text-[#D34545] border border-transparent hover:border-[#FFD5D5] text-[10px] font-semibold transition-colors"
+                                  title="Cancel Invoice"
+                                >
+                                  Cancel
+                                </button>
+                              )}
                               {inv.balanceDue > 0 && inv.status !== 'CANCELLED' && (
                                 <button
                                   onClick={() => handleOpenPaymentModal(inv)}
@@ -565,8 +582,14 @@ export const InvoicesView: React.FC = () => {
                       <th className="p-2.5 border-r border-[#E3E8EE] text-center">Qty</th>
                       <th className="p-2.5 border-r border-[#E3E8EE] text-right">Rate (₹)</th>
                       <th className="p-2.5 border-r border-[#E3E8EE] text-right">Taxable (₹)</th>
-                      <th className="p-2.5 border-r border-[#E3E8EE] text-right">CGST (9%)</th>
-                      <th className="p-2.5 border-r border-[#E3E8EE] text-right">SGST (9%)</th>
+                      {selectedInvoiceForPrint.isInterState ? (
+                        <th className="p-2.5 border-r border-[#E3E8EE] text-right">IGST (18%)</th>
+                      ) : (
+                        <>
+                          <th className="p-2.5 border-r border-[#E3E8EE] text-right">CGST (9%)</th>
+                          <th className="p-2.5 border-r border-[#E3E8EE] text-right">SGST (9%)</th>
+                        </>
+                      )}
                       <th className="p-2.5 text-right">Total (₹)</th>
                     </tr>
                   </thead>
@@ -584,12 +607,20 @@ export const InvoicesView: React.FC = () => {
                         <td className="p-2.5 border-r border-[#E3E8EE] text-right font-mono">
                           ₹{line.totalAmount.toLocaleString('en-IN')}
                         </td>
-                        <td className="p-2.5 border-r border-[#E3E8EE] text-right font-mono">
-                          ₹{line.cgstAmount.toLocaleString('en-IN')}
-                        </td>
-                        <td className="p-2.5 border-r border-[#E3E8EE] text-right font-mono">
-                          ₹{line.sgstAmount.toLocaleString('en-IN')}
-                        </td>
+                        {selectedInvoiceForPrint.isInterState ? (
+                          <td className="p-2.5 border-r border-[#E3E8EE] text-right font-mono">
+                            ₹{(line.igstAmount || line.cgstAmount + line.sgstAmount).toLocaleString('en-IN')}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="p-2.5 border-r border-[#E3E8EE] text-right font-mono">
+                              ₹{line.cgstAmount.toLocaleString('en-IN')}
+                            </td>
+                            <td className="p-2.5 border-r border-[#E3E8EE] text-right font-mono">
+                              ₹{line.sgstAmount.toLocaleString('en-IN')}
+                            </td>
+                          </>
+                        )}
                         <td className="p-2.5 text-right font-bold font-mono">
                           ₹{(line.totalAmount + line.cgstAmount + line.sgstAmount).toLocaleString('en-IN')}
                         </td>
@@ -622,14 +653,23 @@ export const InvoicesView: React.FC = () => {
                       <span>-₹{selectedInvoiceForPrint.discountTotal.toLocaleString('en-IN')}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-[#697386]">
-                    <span>CGST (9%):</span>
-                    <span>₹{selectedInvoiceForPrint.cgstTotal.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between text-[#697386]">
-                    <span>SGST (9%):</span>
-                    <span>₹{selectedInvoiceForPrint.sgstTotal.toLocaleString('en-IN')}</span>
-                  </div>
+                  {selectedInvoiceForPrint.isInterState ? (
+                    <div className="flex justify-between text-[#697386]">
+                      <span>IGST (18% - Inter-State):</span>
+                      <span>₹{(selectedInvoiceForPrint.igstTotal || selectedInvoiceForPrint.taxTotal).toLocaleString('en-IN')}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-[#697386]">
+                        <span>CGST (9%):</span>
+                        <span>₹{selectedInvoiceForPrint.cgstTotal.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-[#697386]">
+                        <span>SGST (9%):</span>
+                        <span>₹{selectedInvoiceForPrint.sgstTotal.toLocaleString('en-IN')}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between text-base font-bold text-[#252735] border-t-2 border-[#252735] pt-1">
                     <span>Grand Total:</span>
                     <span>₹{selectedInvoiceForPrint.totalAmount.toLocaleString('en-IN')}</span>

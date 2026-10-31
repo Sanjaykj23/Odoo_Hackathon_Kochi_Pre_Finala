@@ -17,7 +17,8 @@ import {
   Trash2,
   UserPlus,
   HelpCircle,
-  IndianRupee
+  IndianRupee,
+  BookmarkCheck
 } from 'lucide-react';
 
 interface QuoteLineInput {
@@ -163,6 +164,21 @@ export const QuotationManager: React.FC = () => {
   const sgst = netTaxable * 0.09;
   const totalGst = cgst + sgst;
   const grandTotal = netTaxable + totalGst;
+
+  const handleSaveAsTemplate = () => {
+    if (!customOfferTitle) return;
+    addTemplate({
+      name: customOfferTitle,
+      description: `${customOfferTitle} (${offerValidityDays} days validity)`,
+      validityDays: offerValidityDays,
+      planId: matchedPlan.id,
+      items: lineItems.map((l) => ({
+        productId: l.productId,
+        quantity: l.quantity,
+        discountPercent: customDiscountPercent || 0
+      }))
+    });
+  };
 
   const handleIssueQuotation = () => {
     let customerId = selectedCustomerId;
@@ -617,13 +633,23 @@ export const QuotationManager: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={handleIssueQuotation}
-            className="w-full py-3 rounded-2xl bg-[#6254E8] hover:bg-[#5245D0] active:scale-[0.98] text-white font-bold text-xs shadow-[0_4px_16px_rgba(98,84,232,0.3)] transition-all flex items-center justify-center gap-2"
-          >
-            <Send className="w-4 h-4 fill-current" />
-            <span>Issue Quotation Offer & Save</span>
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={handleIssueQuotation}
+              className="w-full py-3 rounded-2xl bg-[#6254E8] hover:bg-[#5245D0] active:scale-[0.98] text-white font-bold text-xs shadow-[0_4px_16px_rgba(98,84,232,0.3)] transition-all flex items-center justify-center gap-2"
+            >
+              <Send className="w-4 h-4 fill-current" />
+              <span>Issue Quotation Offer & Send to Kanban</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAsTemplate}
+              className="w-full py-2.5 rounded-2xl border border-[#DCE5ED] bg-white hover:bg-[#F0EDFA]/50 text-xs font-semibold text-[#697386] hover:text-[#252735] transition-all flex items-center justify-center gap-2"
+            >
+              <BookmarkCheck className="w-4 h-4 text-[#6254E8]" />
+              <span>Save Offer as Reusable Template</span>
+            </button>
+          </div>
         </div>
 
       </div>

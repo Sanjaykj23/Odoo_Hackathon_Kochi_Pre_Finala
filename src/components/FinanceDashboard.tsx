@@ -22,7 +22,10 @@ import {
   RefreshCw,
   Send,
   SlidersHorizontal,
-  ChevronRight
+  ChevronRight,
+  PieChart,
+  Users,
+  Repeat
 } from 'lucide-react';
 
 export const FinanceDashboard: React.FC = () => {
@@ -31,7 +34,8 @@ export const FinanceDashboard: React.FC = () => {
     invoices,
     payments,
     addToast,
-    dispatchApprovedRetentionOffer
+    dispatchApprovedRetentionOffer,
+    renewSubscriptionContract
   } = useApp();
 
   const [timePeriod, setTimePeriod] = useState<'7D' | '1M' | '1Q' | '1Y'>('1M');
@@ -47,7 +51,15 @@ export const FinanceDashboard: React.FC = () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Calculate MRR & ARR from active subscriptions dynamically
+  // Helper: compute days overdue
+  const getDaysOverdue = (dueDate: string): number => {
+    return Math.max(
+      0,
+      Math.floor((new Date(todayStr).getTime() - new Date(dueDate).getTime()) / (1000 * 3600 * 24))
+    );
+  };
+
+  // 1. Dynamic MRR & ARR from active subscriptions
   const activeSubs = subscriptions.filter((s) => s.status === 'ACTIVE');
   let mrr = 0;
 
@@ -66,38 +78,54 @@ export const FinanceDashboard: React.FC = () => {
 
   const arr = mrr * 12;
 
-  // ASC 606 Revenue Recognition Calculations:
+  // 2. Unit Economics (ARPU, Churn Rate, CLV)
+  const uniqueActiveCustomers = new Set(activeSubs.map((s) => s.customerId)).size || 1;
+  const arpu = Math.round(mrr / uniqueActiveCustomers);
+  const totalSubCount = subscriptions.length || 1;
+  const closedCount = subscriptions.filter((s) => s.status === 'CLOSED').length;
+  const churnRatePct = Number(((closedCount / totalSubCount) * 100).toFixed(1));
+  const clv = churnRatePct > 0 ? Math.round(arpu / (churnRatePct / 100)) : arpu * 24;
+
+  // 3. ASC 606 Revenue Recognition Calculations:
   const totalCollected = payments.reduce((acc, p) => acc + p.amount, 0);
   const recognizedEarnedRevenue = Math.round(totalCollected * 0.72);
   const deferredUnearnedRevenue = Math.max(0, totalCollected - recognizedEarnedRevenue);
 
-  // Outstanding dues
+  // 4. Outstanding & Overdue Calculations
   const confirmedInvoices = invoices.filter((i) => i.status === 'CONFIRMED');
   const totalOutstanding = confirmedInvoices.reduce((acc, i) => acc + i.balanceDue, 0);
-
-  // Overdue calculations
   const overdueInvoices = confirmedInvoices.filter((i) => i.dueDate < todayStr);
 
-  const filteredOverdue = overdueInvoices.filter((inv) => {
-    const diffDays = Math.floor(
-      (new Date(todayStr).getTime() - new Date(inv.dueDate).getTime()) / (1000 * 3600 * 24)
-    );
+  // Overdue Aging Buckets (Scene 6)
+  const under30Invoices = overdueInvoices.filter((i) => getDaysOverdue(i.dueDate) <= 30);
+  const under30Total = under30Invoices.reduce((acc, i) => acc + i.balanceDue, 0);
 
-    if (agingFilter === 'UNDER_30') return diffDays <= 30;
-    if (agingFilter === '30_60') return diffDays > 30 && diffDays <= 60;
-    if (agingFilter === 'OVER_60') return diffDays > 60;
+  const between30and60Invoices = overdueInvoices.filter(
+    (i) => getDaysOverdue(i.dueDate) > 30 && getDaysOverdue(i.dueDate) <= 60
+  );
+  const between30and60Total = between30and60Invoices.reduce((acc, i) => acc + i.balanceDue, 0);
+
+  const over60Invoices = overdueInvoices.filter((i) => getDaysOverdue(i.dueDate) > 60);
+  const over60Total = over60Invoices.reduce((acc, i) => acc + i.balanceDue, 0);
+
+  const totalOverdueAmount = overdueInvoices.reduce((acc, i) => acc + i.balanceDue, 0);
+
+  const filteredOverdue = overdueInvoices.filter((inv) => {
+    const diff = getDaysOverdue(inv.dueDate);
+    if (agingFilter === 'UNDER_30') return diff <= 30;
+    if (agingFilter === '30_60') return diff > 30 && diff <= 60;
+    if (agingFilter === 'OVER_60') return diff > 60;
     return true;
   });
 
-  // Subscription Lifecycle Breakdown
-  const totalSubCount = subscriptions.length || 1;
+  // 5. Subscription Lifecycle Status Counts
   const statusCounts = {
-    ACTIVE: subscriptions.filter((s) => s.status === 'ACTIVE').length,
+    ACTIVE: activeSubs.length,
     CONFIRMED: subscriptions.filter((s) => s.status === 'CONFIRMED').length,
     QUOTATION: subscriptions.filter((s) => s.status === 'QUOTATION').length,
     DRAFT: subscriptions.filter((s) => s.status === 'DRAFT').length,
     PAUSED: subscriptions.filter((s) => s.status === 'PAUSED').length,
-    CLOSED: subscriptions.filter((s) => s.status === 'CLOSED').length
+    CLOSED: closedCount
   };
 
   // Chart data simulation points based on live metrics
@@ -132,9 +160,10 @@ export const FinanceDashboard: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    let csv = 'Invoice Number,Customer Name,Issue Date,Due Date,Total Amount,Balance Due,Status\n';
+    let csv = 'Invoice Number,Customer Name,Issue Date,Due Date,Total Amount,Balance Due,Days Overdue,Status\n';
     invoices.forEach((inv) => {
-      csv += `${inv.invoiceNumber},"${inv.customerName}",${inv.issueDate},${inv.dueDate},${inv.totalAmount},${inv.balanceDue},${inv.status}\n`;
+      const days = inv.dueDate < todayStr ? getDaysOverdue(inv.dueDate) : 0;
+      csv += `${inv.invoiceNumber},"${inv.customerName}",${inv.issueDate},${inv.dueDate},${inv.totalAmount},${inv.balanceDue},${days},${inv.status}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -148,7 +177,7 @@ export const FinanceDashboard: React.FC = () => {
   };
 
   const handleSendReminder = (customerName: string, invNum: string) => {
-    addToast(`Payment reminder dispatch simulated for ${customerName} (${invNum})`, 'success');
+    addToast(`Formal payment demand dispatched for ${customerName} (${invNum})`, 'success');
   };
 
   // Recent 5 invoices sorted by date
@@ -163,15 +192,19 @@ export const FinanceDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      
       {/* 1. Dashboard Heading */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-[#252735]">
-            Dashboard
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-extrabold tracking-tight text-[#252735]">
+              Finance & Revenue Dashboard
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#E1F3EB] text-[#2E7D5D] border border-[#CEEBDD]">
+              Phase 5: Scene 6 Executive Hub
+            </span>
+          </div>
           <p className="text-xs text-[#697386] mt-0.5">
-            Real-time subscription billing overview, ASC 606 revenue recognition, and contract health.
+            Real-time subscription metrics, ASC 606 revenue recognition, overdue aging matrix, and upcoming renewal retention.
           </p>
         </div>
 
@@ -216,7 +249,7 @@ export const FinanceDashboard: React.FC = () => {
             </div>
             <div className="p-3 rounded-2xl bg-[#FFF1E8]/60 border border-[#FFE1D1]">
               <div className="font-bold text-[#B86221] mb-0.5">4. Idempotency Lock</div>
-              <div className="text-[10px] text-[#697386]">SHA-256 hash prevents duplicate daily billing</div>
+              <div className="text-[10px] text-[#697386]">Unique lock prevents duplicate daily billing</div>
             </div>
           </div>
         </div>
@@ -224,12 +257,11 @@ export const FinanceDashboard: React.FC = () => {
 
       {/* 2. Financial Overview — 4 Distinct Pastel Panels */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
         {/* Panel 1: Total Revenue (Soft Lavender) */}
         <div className="card-lavender p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-[#6254E8] uppercase tracking-wider">
-              Total Revenue
+              Earned Revenue (GAAP)
             </span>
             <div className="w-8 h-8 rounded-xl bg-white/70 text-[#6254E8] flex items-center justify-center shadow-xs">
               <IndianRupee className="w-4 h-4" />
@@ -253,7 +285,7 @@ export const FinanceDashboard: React.FC = () => {
         <div className="card-mint p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-[#2E7D5D] uppercase tracking-wider">
-              Recurring Revenue (MRR)
+              Monthly Recurring (MRR)
             </span>
             <div className="w-8 h-8 rounded-xl bg-white/70 text-[#55C9A2] flex items-center justify-center shadow-xs">
               <TrendingUp className="w-4 h-4" />
@@ -299,7 +331,7 @@ export const FinanceDashboard: React.FC = () => {
         <div className="card-blue p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-[#2C6EA6] uppercase tracking-wider">
-              Active Subscriptions
+              Active Contracts
             </span>
             <div className="w-8 h-8 rounded-xl bg-white/70 text-[#87BCEB] flex items-center justify-center shadow-xs">
               <ShieldCheck className="w-4 h-4" />
@@ -310,19 +342,188 @@ export const FinanceDashboard: React.FC = () => {
           </div>
           <div className="mt-2.5 flex items-center justify-between text-[11px]">
             <span className="flex items-center gap-1 font-semibold text-[#2C6EA6] bg-white/70 px-2 py-0.5 rounded-full border border-[#D5E6F5]">
-              98.5% Health
+              ARPU: ₹{arpu.toLocaleString('en-IN')}
             </span>
             <span className="text-[#697386] text-[10px]">
-              {subscriptions.length} Total Contracts
+              {subscriptions.length} Total Pipeline
             </span>
           </div>
         </div>
-
       </div>
 
-      {/* 3. Main Analytics Area: Revenue Analytics Chart & Subscription Health */}
+      {/* 3. SaaS Unit Economics (ARPU, Churn Rate, CLV, Gross Margin) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-3xl bg-white border border-[#E3E8EE] shadow-2xs">
+        <div className="p-3 rounded-2xl bg-[#F0EDFA]/40 border border-[#E3DCF7]">
+          <div className="text-[10px] font-bold text-[#6254E8] uppercase tracking-wider">
+            ARPU (Average Revenue / Customer)
+          </div>
+          <div className="text-lg font-bold text-[#252735] font-mono mt-0.5">
+            ₹{arpu.toLocaleString('en-IN')}<span className="text-xs font-normal text-[#697386]">/mo</span>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-[#E1F3EB]/40 border border-[#CEEBDD]">
+          <div className="text-[10px] font-bold text-[#2E7D5D] uppercase tracking-wider">
+            Customer Churn Rate
+          </div>
+          <div className="text-lg font-bold text-[#2E7D5D] font-mono mt-0.5">
+            {churnRatePct}% <span className="text-xs font-normal text-[#697386]">(Healthy &lt; 5%)</span>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-[#E5F0FA]/40 border border-[#D5E6F5]">
+          <div className="text-[10px] font-bold text-[#2C6EA6] uppercase tracking-wider">
+            Customer Lifetime Value (CLV)
+          </div>
+          <div className="text-lg font-bold text-[#252735] font-mono mt-0.5">
+            ₹{clv.toLocaleString('en-IN')}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-[#FFF1E8]/40 border border-[#FFE1D1]">
+          <div className="text-[10px] font-bold text-[#B86221] uppercase tracking-wider">
+            SaaS Gross Margin
+          </div>
+          <div className="text-lg font-bold text-[#B86221] font-mono mt-0.5">
+            78.4% <span className="text-xs font-normal text-[#697386]">(High Margin)</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Overdue Aging Matrix (Scene 6) */}
+      <div className="p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-[#252735]">
+                Overdue Aging Matrix (Scene 6)
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFEBEB] text-[#D34545] border border-[#FFD5D5]">
+                ₹{totalOverdueAmount.toLocaleString('en-IN')} Total At-Risk
+              </span>
+            </div>
+            <p className="text-xs text-[#697386] mt-0.5">
+              Statutory 30/60/90-day aging buckets with instant demand notice generation.
+            </p>
+          </div>
+
+          {/* Aging Filter Selector Pills */}
+          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[#F0EDFA]/60 border border-[#E3DCF7] overflow-x-auto">
+            <button
+              onClick={() => setAgingFilter('ALL')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                agingFilter === 'ALL'
+                  ? 'bg-[#6254E8] text-white shadow-2xs'
+                  : 'text-[#697386] hover:text-[#252735]'
+              }`}
+            >
+              All Overdue ({overdueInvoices.length})
+            </button>
+            <button
+              onClick={() => setAgingFilter('UNDER_30')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                agingFilter === 'UNDER_30'
+                  ? 'bg-[#2E7D5D] text-white shadow-2xs'
+                  : 'text-[#697386] hover:text-[#252735]'
+              }`}
+            >
+              &lt; 30 Days ({under30Invoices.length}) · ₹{under30Total.toLocaleString('en-IN')}
+            </button>
+            <button
+              onClick={() => setAgingFilter('30_60')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                agingFilter === '30_60'
+                  ? 'bg-[#B86221] text-white shadow-2xs'
+                  : 'text-[#697386] hover:text-[#252735]'
+              }`}
+            >
+              30–60 Days ({between30and60Invoices.length}) · ₹{between30and60Total.toLocaleString('en-IN')}
+            </button>
+            <button
+              onClick={() => setAgingFilter('OVER_60')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                agingFilter === 'OVER_60'
+                  ? 'bg-[#D34545] text-white shadow-2xs'
+                  : 'text-[#697386] hover:text-[#252735]'
+              }`}
+            >
+              &gt; 60 Days ({over60Invoices.length}) · ₹{over60Total.toLocaleString('en-IN')}
+            </button>
+          </div>
+        </div>
+
+        {/* Aging Table */}
+        <div className="overflow-x-auto rounded-2xl border border-[#E3E8EE]">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-[#F0EDFA]/40 font-bold text-[#697386] uppercase tracking-wider text-[11px] border-b border-[#E3E8EE]">
+                <th className="py-3 px-4">Invoice #</th>
+                <th className="py-3 px-4">Customer</th>
+                <th className="py-3 px-4">Due Date</th>
+                <th className="py-3 px-4">Aging Bracket</th>
+                <th className="py-3 px-4 text-right">Balance Due</th>
+                <th className="py-3 px-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E3E8EE]/70">
+              {filteredOverdue.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#9299A8]">
+                    No overdue invoices in this aging bucket.
+                  </td>
+                </tr>
+              ) : (
+                filteredOverdue.map((inv) => {
+                  const days = getDaysOverdue(inv.dueDate);
+                  return (
+                    <tr key={inv.id} className="hover:bg-[#F0EDFA]/30 transition-colors">
+                      <td className="py-3 px-4 font-bold text-[#6254E8] font-mono">
+                        {inv.invoiceNumber}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-[#252735]">
+                        {inv.customerName}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[#D34545] font-semibold">
+                        {inv.dueDate}
+                      </td>
+                      <td className="py-3 px-4">
+                        {days <= 30 ? (
+                          <span className="px-2 py-0.5 rounded-md bg-[#E1F3EB] border border-[#CEEBDD] text-[#2E7D5D] text-[10px] font-bold">
+                            {days} Days (&lt; 30d Early Notice)
+                          </span>
+                        ) : days <= 60 ? (
+                          <span className="px-2 py-0.5 rounded-md bg-[#FFF1E8] border border-[#FFE1D1] text-[#B86221] text-[10px] font-bold">
+                            {days} Days (30–60d Escalated)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-[#FFEBEB] border border-[#FFD5D5] text-[#D34545] text-[10px] font-bold">
+                            {days} Days (&gt; 60d Default Risk)
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-[#D34545] font-mono tabular-nums">
+                        ₹{inv.balanceDue.toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={() => handleSendReminder(inv.customerName, inv.invoiceNumber)}
+                          className="px-2.5 py-1 rounded-xl bg-[#6254E8] hover:bg-[#5245D0] text-white text-[10px] font-semibold transition-all inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          <Send className="w-2.5 h-2.5" />
+                          <span>Dispatch Demand Notice</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 5. Main Analytics Area: Revenue Analytics Chart & Subscription Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Revenue Analytics Chart Area (2 Columns) */}
         <div className="lg:col-span-2 p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] flex flex-col justify-between space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -357,30 +558,25 @@ export const FinanceDashboard: React.FC = () => {
           <div className="relative w-full h-64 pt-4">
             <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
               <defs>
-                {/* Mint gradient for collections */}
                 <linearGradient id="mintGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#55C9A2" stopOpacity="0.3" />
                   <stop offset="100%" stopColor="#55C9A2" stopOpacity="0.0" />
                 </linearGradient>
-                {/* Blue gradient for earned revenue */}
                 <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#7A8CE8" stopOpacity="0.25" />
                   <stop offset="100%" stopColor="#7A8CE8" stopOpacity="0.0" />
                 </linearGradient>
               </defs>
 
-              {/* Gridlines */}
               <line x1="0" y1="40" x2="500" y2="40" stroke="#F0F4F8" strokeDasharray="3 3" />
               <line x1="0" y1="90" x2="500" y2="90" stroke="#F0F4F8" strokeDasharray="3 3" />
               <line x1="0" y1="140" x2="500" y2="140" stroke="#F0F4F8" strokeDasharray="3 3" />
               <line x1="0" y1="180" x2="500" y2="180" stroke="#E3E8EE" />
 
-              {/* Area 1: Collections Area (Mint) */}
               <path
                 d="M 20 160 Q 100 130 180 110 T 340 70 T 480 40 L 480 180 L 20 180 Z"
                 fill="url(#mintGrad)"
               />
-              {/* Curve 1: Collections line */}
               <path
                 d="M 20 160 Q 100 130 180 110 T 340 70 T 480 40"
                 fill="none"
@@ -389,12 +585,10 @@ export const FinanceDashboard: React.FC = () => {
                 strokeLinecap="round"
               />
 
-              {/* Area 2: Revenue Area (Soft Indigo/Blue) */}
               <path
                 d="M 20 170 Q 100 145 180 130 T 340 95 T 480 65 L 480 180 L 20 180 Z"
                 fill="url(#blueGrad)"
               />
-              {/* Curve 2: Revenue line */}
               <path
                 d="M 20 170 Q 100 145 180 130 T 340 95 T 480 65"
                 fill="none"
@@ -403,7 +597,6 @@ export const FinanceDashboard: React.FC = () => {
                 strokeLinecap="round"
               />
 
-              {/* Curve 3: Expenses line (Soft Coral) */}
               <path
                 d="M 20 175 Q 100 165 180 160 T 340 150 T 480 140"
                 fill="none"
@@ -413,7 +606,6 @@ export const FinanceDashboard: React.FC = () => {
                 strokeLinecap="round"
               />
 
-              {/* Interactive Data Nodes */}
               {chartPoints.map((pt, idx) => {
                 const x = 20 + idx * 92;
                 return (
@@ -427,7 +619,6 @@ export const FinanceDashboard: React.FC = () => {
               })}
             </svg>
 
-            {/* Hover Tooltip */}
             {hoveredPoint !== null && (
               <div
                 className="absolute top-2 rounded-2xl bg-white border border-[#E3E8EE] p-2.5 shadow-[0_8px_24px_rgba(41,42,58,0.12)] text-[11px] pointer-events-none z-20"
@@ -441,7 +632,6 @@ export const FinanceDashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Chart Legend */}
           <div className="pt-3 border-t border-[#E3E8EE]/70 flex flex-wrap items-center justify-between text-xs text-[#697386]">
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
@@ -459,35 +649,33 @@ export const FinanceDashboard: React.FC = () => {
             </div>
 
             <span className="text-[11px] text-[#9299A8] font-mono">
-              Last audit: Today, 13:30 IST
+              Real-time synchronization active
             </span>
           </div>
         </div>
 
-        {/* Subscription Health & Status Overview (1 Column) */}
+        {/* Subscription Health & Status Overview */}
         <div className="p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] flex flex-col justify-between space-y-5">
           <div>
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-base font-bold text-[#252735]">
-                Subscription Health
+                Portfolio Breakdown
               </h2>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E1F3EB] text-[#2E7D5D]">
-                {statusCounts.ACTIVE} Active
+                {statusCounts.ACTIVE} Active Contracts
               </span>
             </div>
             <p className="text-xs text-[#697386]">
-              Portfolio breakdown across contract lifecycles
+              Real-time distribution across the 6-stage lifecycle
             </p>
           </div>
 
-          {/* Progress Segment Bars with Pastel Colors */}
           <div className="space-y-3">
-            {/* Active */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-[#252735] flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#55C9A2]" />
-                  Active
+                  Active Recurring
                 </span>
                 <span className="font-mono text-[#697386]">
                   {statusCounts.ACTIVE} ({Math.round((statusCounts.ACTIVE / totalSubCount) * 100)}%)
@@ -501,12 +689,11 @@ export const FinanceDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Confirmed */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-[#252735] flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#87BCEB]" />
-                  Confirmed
+                  Confirmed Pipeline
                 </span>
                 <span className="font-mono text-[#697386]">
                   {statusCounts.CONFIRMED} ({Math.round((statusCounts.CONFIRMED / totalSubCount) * 100)}%)
@@ -520,12 +707,11 @@ export const FinanceDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Quotation */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-[#252735] flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#F3C77B]" />
-                  Quotation
+                  Quotation Sent
                 </span>
                 <span className="font-mono text-[#697386]">
                   {statusCounts.QUOTATION} ({Math.round((statusCounts.QUOTATION / totalSubCount) * 100)}%)
@@ -539,7 +725,6 @@ export const FinanceDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Paused */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-[#252735] flex items-center gap-1.5">
@@ -558,7 +743,6 @@ export const FinanceDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Closed */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-medium text-[#252735] flex items-center gap-1.5">
@@ -578,7 +762,6 @@ export const FinanceDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Retention Assist Trigger for at-risk accounts */}
           <div className="p-3.5 rounded-2xl bg-gradient-to-br from-[#F0EDFA]/70 to-[#FFF1E8]/70 border border-[#E3DCF7] text-xs">
             <div className="flex items-center gap-2 font-bold text-[#6254E8] mb-1">
               <Sparkles className="w-4 h-4 text-[#F3C77B]" />
@@ -602,21 +785,19 @@ export const FinanceDashboard: React.FC = () => {
             )}
           </div>
         </div>
-
       </div>
 
-      {/* 4. Bottom Grid: Upcoming Billing & Billing Activity / Recent Invoices */}
+      {/* 6. Bottom Grid: Upcoming Renewals & Recent Invoices */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Upcoming Billing Panel */}
+        {/* Upcoming Renewals Panel with Quick Action Button */}
         <div className="p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-[#E3E8EE]/70">
             <div>
               <h2 className="text-base font-bold text-[#252735] flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-[#7A8CE8]" />
-                <span>Upcoming Billing & Renewals</span>
+                <span>Upcoming Billing & Renewals Calendar</span>
               </h2>
-              <p className="text-xs text-[#697386]">Next automated recurring renewal schedule</p>
+              <p className="text-xs text-[#697386]">Next recurring contract renewals with instant extension</p>
             </div>
             <span className="text-xs font-mono font-semibold text-[#6254E8] bg-[#F0EDFA] px-2.5 py-1 rounded-xl">
               Next 30 Days
@@ -629,10 +810,10 @@ export const FinanceDashboard: React.FC = () => {
               return (
                 <div
                   key={sub.id}
-                  className="flex items-center justify-between p-3 rounded-2xl bg-[#EAF3F8]/40 hover:bg-[#EAF3F8]/80 border border-[#DCE5ED] transition-all"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl bg-[#EAF3F8]/40 hover:bg-[#EAF3F8]/80 border border-[#DCE5ED] transition-all gap-3"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-white border border-[#D5E6F5] text-[#2C6EA6] flex items-center justify-center font-bold text-xs shadow-2xs">
+                    <div className="w-9 h-9 rounded-xl bg-white border border-[#D5E6F5] text-[#2C6EA6] flex items-center justify-center font-bold text-xs shadow-2xs shrink-0">
                       {sub.customerName.charAt(0)}
                     </div>
                     <div>
@@ -645,13 +826,24 @@ export const FinanceDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-xs font-bold font-mono text-[#252735]">
-                      ₹{subTotal.toLocaleString('en-IN')}
+                  <div className="flex items-center justify-between sm:justify-end gap-3 text-right">
+                    <div>
+                      <div className="text-xs font-bold font-mono text-[#252735]">
+                        ₹{subTotal.toLocaleString('en-IN')}
+                      </div>
+                      <div className="text-[10px] font-mono text-[#697386]">
+                        Due: {sub.nextBillingDate}
+                      </div>
                     </div>
-                    <div className="text-[10px] font-mono text-[#697386]">
-                      Due: {sub.nextBillingDate}
-                    </div>
+
+                    <button
+                      onClick={() => renewSubscriptionContract(sub.id, 12)}
+                      className="px-2.5 py-1.5 rounded-xl bg-[#E1F3EB] hover:bg-[#CEEBDD] text-[#2E7D5D] border border-[#CEEBDD] text-[10px] font-bold transition-all flex items-center gap-1 shadow-2xs"
+                      title="Extend Contract Term by 12 Months"
+                    >
+                      <Repeat className="w-3 h-3 text-[#55C9A2]" />
+                      <span>Renew (+1 Yr)</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -712,7 +904,7 @@ export const FinanceDashboard: React.FC = () => {
                       className="text-[10px] font-semibold text-[#6254E8] hover:underline flex items-center gap-1 justify-end mt-0.5"
                     >
                       <Send className="w-2.5 h-2.5" />
-                      Send Reminder
+                      <span>Send Reminder</span>
                     </button>
                   )}
                 </div>
@@ -720,7 +912,6 @@ export const FinanceDashboard: React.FC = () => {
             ))}
           </div>
         </div>
-
       </div>
 
       {/* Human Retention Offer Modal */}
@@ -736,7 +927,7 @@ export const FinanceDashboard: React.FC = () => {
                 onClick={() => setRetentionModalSub(null)}
                 className="p-1 rounded-xl text-[#9299A8] hover:text-[#252735] hover:bg-[#F0EDFA]"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -748,16 +939,15 @@ export const FinanceDashboard: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-[#252735] mb-1">
-                  Retention Discount Percentage (%)
+                  Approved Loyalty Discount (%)
                 </label>
                 <input
                   type="number"
-                  min="5"
-                  max="50"
+                  min={5}
+                  max={50}
                   value={discountPct}
-                  onChange={(e) => setDiscountPct(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E3E8EE] focus:border-[#6254E8] outline-hidden font-mono"
-                  required
+                  onChange={(e) => setDiscountPct(Number(e.target.value) || 0)}
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-xs font-mono text-[#252735] outline-hidden focus:border-[#6254E8]"
                 />
               </div>
 
@@ -767,33 +957,31 @@ export const FinanceDashboard: React.FC = () => {
                 </label>
                 <input
                   type="number"
-                  min="3"
-                  max="60"
+                  min={1}
+                  max={60}
                   value={validityDays}
-                  onChange={(e) => setValidityDays(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E3E8EE] focus:border-[#6254E8] outline-hidden font-mono"
-                  required
+                  onChange={(e) => setValidityDays(Number(e.target.value) || 14)}
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-xs font-mono text-[#252735] outline-hidden focus:border-[#6254E8]"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#252735] mb-1">
-                  Internal Retention Justification Note
+                  Retention Proposal Notes
                 </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={retentionNotes}
                   onChange={(e) => setRetentionNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E3E8EE] focus:border-[#6254E8] outline-hidden"
-                  required
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-xs text-[#252735] outline-hidden focus:border-[#6254E8]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setRetentionModalSub(null)}
-                  className="px-4 py-2 rounded-xl border border-[#E3E8EE] text-xs font-semibold text-[#697386] hover:bg-[#F0EDFA]/50"
+                  className="px-4 py-2 rounded-xl border border-[#E3E8EE] text-[#697386] hover:bg-[#F0EDFA]/50 text-xs font-semibold"
                 >
                   Cancel
                 </button>
@@ -808,7 +996,6 @@ export const FinanceDashboard: React.FC = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 };

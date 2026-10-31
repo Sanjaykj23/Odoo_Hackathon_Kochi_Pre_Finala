@@ -599,3 +599,100 @@ SET name = EXCLUDED.name,
     allow_early_close = EXCLUDED.allow_early_close,
     allow_pause = EXCLUDED.allow_pause,
     allow_renew = EXCLUDED.allow_renew;
+
+
+-- ============================================================================
+-- 19. INITIAL SEED: QUOTATIONS & SUBSCRIPTION LIFECYCLE (PHASE 3)
+-- ============================================================================
+
+-- A. Customer Profile Seed (Ensuring Foreign Key Consistency)
+INSERT INTO public.users (id, email, password_hash, role, name, phone, company_name, gstin, pan, address)
+VALUES (
+    'a0000000-0000-0000-0000-000000000004',
+    'billing@infosys.com',
+    'SUPABASE_AUTH',
+    'CUSTOMER',
+    'Suresh Kumar',
+    '+91 80 2852 0261',
+    'Infosys Tech Solutions Ltd',
+    '29AAACI1234M1Z2',
+    'AAACI1234M',
+    'Electronics City, Hosur Road, Bengaluru, Karnataka'
+) ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    company_name = EXCLUDED.company_name,
+    gstin = EXCLUDED.gstin;
+
+INSERT INTO public.customer_profiles (id, user_id, company_name, gstin, pan, billing_address, state)
+VALUES (
+    'a0000000-0000-0000-0000-000000000004',
+    'a0000000-0000-0000-0000-000000000004',
+    'Infosys Tech Solutions Ltd',
+    '29AAACI1234M1Z2',
+    'AAACI1234M',
+    'Electronics City, Hosur Road, Bengaluru, Karnataka',
+    'Karnataka'
+) ON CONFLICT (user_id) DO UPDATE
+SET company_name = EXCLUDED.company_name,
+    gstin = EXCLUDED.gstin,
+    billing_address = EXCLUDED.billing_address;
+
+-- B. Quotation Templates
+INSERT INTO quotation_templates (id, name, plan_id, validity_days)
+VALUES
+    ('d0000000-0000-4000-8000-000000000001', 'Enterprise Full Suite Package', 'c0000000-0000-4000-8000-000000000002', 30),
+    ('d0000000-0000-4000-8000-000000000002', 'Startup Essentials ERP Trial', 'c0000000-0000-4000-8000-000000000001', 15)
+ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    validity_days = EXCLUDED.validity_days;
+
+INSERT INTO quotation_template_items (id, template_id, product_id, quantity, discount_percent)
+VALUES
+    ('d1000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 10, 10.00),
+    ('d1000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002', 10, 10.00),
+    ('d1000000-0000-4000-8000-000000000003', 'd0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000003', 1, 15.00),
+    ('d1000000-0000-4000-8000-000000000004', 'd0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', 1, 0.00)
+ON CONFLICT (id) DO UPDATE
+SET quantity = EXCLUDED.quantity,
+    discount_percent = EXCLUDED.discount_percent;
+
+-- C. Subscriptions (Multi-Stage Pipeline: DRAFT, QUOTATION, CONFIRMED, ACTIVE, PAUSED, CLOSED)
+INSERT INTO subscriptions (id, subscription_number, customer_id, plan_id, status, start_date, expiry_date, next_billing_date, payment_terms, notes)
+VALUES
+    ('e0000000-0000-4000-8000-000000000001', 'SUB-2026-001', 'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-4000-8000-000000000002', 'ACTIVE', '2026-01-01', '2026-12-31', '2026-02-01', 'Net 30', 'Enterprise Growth annual software deployment.'),
+    ('e0000000-0000-4000-8000-000000000002', 'SUB-2026-002', 'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-4000-8000-000000000001', 'QUOTATION', '2026-02-01', '2026-03-03', '2026-02-01', 'Net 15', 'Pending customer approval on customer portal.'),
+    ('e0000000-0000-4000-8000-000000000003', 'SUB-2026-003', 'a0000000-0000-0000-0000-000000000004', 'c0000000-0000-4000-8000-000000000004', 'CONFIRMED', '2026-02-05', '2026-02-12', '2026-02-05', 'Net 7', 'Weekly sprint trial confirmed by sales staff.')
+ON CONFLICT (id) DO UPDATE
+SET status = EXCLUDED.status,
+    next_billing_date = EXCLUDED.next_billing_date,
+    notes = EXCLUDED.notes;
+
+INSERT INTO subscription_line_items (id, subscription_id, product_id, variant_id, quantity, unit_price, tax_percent, discount_amount, total_amount)
+VALUES
+    ('e1000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001', 5, 13060.00, 18.00, 0.00, 65300.00),
+    ('e1000000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', NULL, 2, 12500.00, 18.00, 0.00, 25000.00),
+    ('e1000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-000000000002', NULL, 1, 6800.00, 18.00, 0.00, 6800.00)
+ON CONFLICT (id) DO UPDATE
+SET quantity = EXCLUDED.quantity,
+    total_amount = EXCLUDED.total_amount;
+
+
+-- ============================================================================
+-- 20. INITIAL SEED: INVOICES & IDEMPOTENCY ENGINE (PHASE 4)
+-- ============================================================================
+
+INSERT INTO invoices (id, invoice_number, subscription_id, customer_id, issue_date, due_date, status, subtotal, discount_total, cgst_total, sgst_total, igst_total, tax_total, total_amount, amount_paid, balance_due, idempotency_key)
+VALUES
+    ('f0000000-0000-4000-8000-000000000001', 'INV-2026-001', 'e0000000-0000-4000-8000-000000000001', 'a0000000-0000-0000-0000-000000000004', '2026-01-01', '2026-01-16', 'PAID', 65300.00, 0.00, 5877.00, 5877.00, 0.00, 11754.00, 77054.00, 77054.00, 0.00, 'IDEM_e0000000-0000-4000-8000-000000000001_2026-01-01'),
+    ('f0000000-0000-4000-8000-000000000002', 'INV-2026-002', 'e0000000-0000-4000-8000-000000000001', 'a0000000-0000-0000-0000-000000000004', '2026-02-01', '2026-02-16', 'CONFIRMED', 65300.00, 0.00, 5877.00, 5877.00, 0.00, 11754.00, 77054.00, 0.00, 77054.00, 'IDEM_e0000000-0000-4000-8000-000000000001_2026-02-01')
+ON CONFLICT (id) DO UPDATE
+SET status = EXCLUDED.status,
+    balance_due = EXCLUDED.balance_due;
+
+INSERT INTO invoice_line_items (id, invoice_id, product_id, quantity, unit_price, tax_percent, cgst_amount, sgst_amount, igst_amount, discount_amount, total_amount)
+VALUES
+    ('f1000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 5, 13060.00, 18.00, 5877.00, 5877.00, 0.00, 0.00, 65300.00),
+    ('f1000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001', 5, 13060.00, 18.00, 5877.00, 5877.00, 0.00, 0.00, 65300.00)
+ON CONFLICT (id) DO UPDATE
+SET quantity = EXCLUDED.quantity,
+    total_amount = EXCLUDED.total_amount;

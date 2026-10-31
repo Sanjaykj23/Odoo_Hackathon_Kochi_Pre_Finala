@@ -151,7 +151,13 @@ const SEED_UUID_MAP: Record<string, string> = {
   plan_annual_growth: 'c0000000-0000-4000-8000-000000000002',
   plan_startup_starter: 'c0000000-0000-4000-8000-000000000003',
   plan_weekly_sprint: 'c0000000-0000-4000-8000-000000000004',
-  plan_daily_poc: 'c0000000-0000-4000-8000-000000000005'
+  plan_daily_poc: 'c0000000-0000-4000-8000-000000000005',
+  tpl_ent_suite: 'd0000000-0000-4000-8000-000000000001',
+  tpl_std_monthly: 'd0000000-0000-4000-8000-000000000002',
+  sub_active_1: 'e0000000-0000-4000-8000-000000000001',
+  sub_quote_1: 'e0000000-0000-4000-8000-000000000002',
+  sub_confirmed_1: 'e0000000-0000-4000-8000-000000000003',
+  usr_customer: 'a0000000-0000-0000-0000-000000000004'
 };
 
 function generateUUID(): string {
@@ -173,6 +179,50 @@ function ensureUUID(id: string | undefined): string {
   if (uuidRegex.test(id)) return id;
   if (SEED_UUID_MAP[id]) return SEED_UUID_MAP[id];
   return generateUUID();
+}
+
+function advanceBillingDate(currentDateStr: string, frequency: BillingFrequency): string {
+  const parts = currentDateStr.split('-').map(Number);
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+
+  if (frequency === 'DAILY') {
+    date.setDate(date.getDate() + 1);
+  } else if (frequency === 'WEEKLY') {
+    date.setDate(date.getDate() + 7);
+  } else if (frequency === 'MONTHLY') {
+    date.setMonth(date.getMonth() + 1);
+  } else if (frequency === 'YEARLY') {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function isInterStateCustomer(gstin?: string, address?: string): boolean {
+  if (gstin && gstin.trim().length >= 2) {
+    return !gstin.trim().startsWith('29'); // Karnataka code is 29
+  }
+  if (address) {
+    const lower = address.toLowerCase();
+    if (lower.includes('karnataka') || lower.includes('bengaluru') || lower.includes('bangalore')) {
+      return false;
+    }
+    if (
+      lower.includes('maharashtra') ||
+      lower.includes('mumbai') ||
+      lower.includes('delhi') ||
+      lower.includes('tamil nadu') ||
+      lower.includes('chennai') ||
+      lower.includes('hyderabad') ||
+      lower.includes('telangana')
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -285,6 +335,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_plans`, JSON.stringify(billingPlans));
   }, [billingPlans]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_templates`, JSON.stringify(templates));
+  }, [templates]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_subscriptions`, JSON.stringify(subscriptions));
+  }, [subscriptions]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_invoices`, JSON.stringify(invoices));
+  }, [invoices]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_payments`, JSON.stringify(payments));
+  }, [payments]);
 
   // Synchronize Supabase Auth Session and Public Users on Mount
   useEffect(() => {
@@ -477,6 +543,226 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
     fetchSupabaseBillingPlans();
+
+    // Fetch Quotation Templates from Supabase
+    const fetchSupabaseTemplates = async () => {
+      try {
+        const { data: supaTemplates, error } = await client
+          .from('quotation_templates')
+          .select('*, quotation_template_items(*)');
+        if (!error && supaTemplates && supaTemplates.length > 0) {
+          const mappedTemplates: QuotationTemplate[] = supaTemplates.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            description: `${t.name} (Valid for ${t.validity_days || 30} days)`,
+            validityDays: Number(t.validity_days) || 30,
+            planId: t.plan_id,
+            items: (t.quotation_template_items || []).map((it: any) => ({
+              productId: it.product_id,
+              quantity: Number(it.quantity) || 1,
+              discountPercent: Number(it.discount_percent) || 0
+            }))
+          }));
+          setTemplates(mappedTemplates);
+        } else if (!error && (!supaTemplates || supaTemplates.length === 0)) {
+          // Auto-seed initial templates to Supabase
+          for (const tpl of INITIAL_TEMPLATES) {
+            const tplUuid = ensureUUID(tpl.id);
+            await client.from('quotation_templates').upsert({
+              id: tplUuid,
+              name: tpl.name,
+              plan_id: ensureUUID(tpl.planId),
+              validity_days: tpl.validityDays || 30
+            });
+            if (tpl.items && tpl.items.length > 0) {
+              for (const it of tpl.items) {
+                await client.from('quotation_template_items').upsert({
+                  id: generateUUID(),
+                  template_id: tplUuid,
+                  product_id: ensureUUID(it.productId),
+                  quantity: it.quantity,
+                  discount_percent: it.discountPercent || 0
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not sync quotation templates from Supabase:', err);
+      }
+    };
+    fetchSupabaseTemplates();
+
+    // Fetch Subscriptions & Line Items from Supabase
+    const fetchSupabaseSubscriptions = async () => {
+      try {
+        const { data: supaSubs, error } = await client
+          .from('subscriptions')
+          .select('*, subscription_line_items(*)');
+        if (!error && supaSubs && supaSubs.length > 0) {
+          const mappedSubs: Subscription[] = supaSubs.map((s: any) => {
+            const plan = billingPlans.find((p) => p.id === s.plan_id || ensureUUID(p.id) === s.plan_id) || billingPlans[0];
+            const customer = users.find((u) => u.id === s.customer_id || ensureUUID(u.id) === s.customer_id) || users.find((u) => u.role === 'CUSTOMER') || users[0];
+            return {
+              id: s.id,
+              number: s.subscription_number,
+              customerId: s.customer_id,
+              customerName: customer?.name || 'Enterprise Customer',
+              customerEmail: customer?.email || 'customer@brightloop.io',
+              customerGstin: customer?.gstin,
+              planId: s.plan_id,
+              planName: plan?.name || 'Enterprise License Plan',
+              billingFrequency: plan?.frequency || 'MONTHLY',
+              startDate: s.start_date,
+              expiryDate: s.expiry_date || undefined,
+              nextBillingDate: s.next_billing_date,
+              paymentTerms: s.payment_terms || 'Net 15',
+              status: s.status as SubscriptionStatus,
+              lines: (s.subscription_line_items || []).map((l: any) => ({
+                id: l.id,
+                productId: l.product_id,
+                productName: products.find((p) => p.id === l.product_id || ensureUUID(p.id) === l.product_id)?.name || 'Enterprise Software',
+                variantId: l.variant_id || undefined,
+                quantity: Number(l.quantity) || 1,
+                unitPrice: Number(l.unit_price) || 0,
+                taxPercent: Number(l.tax_percent) || 18,
+                discountAmount: Number(l.discount_amount) || 0,
+                totalAmount: Number(l.total_amount) || 0
+              })),
+              closureRules: plan?.closureRules || {
+                autoCloseOnEnd: false,
+                allowEarlyClose: true,
+                allowPause: true,
+                allowRenew: true
+              },
+              notes: s.notes || undefined,
+              createdAt: s.created_at
+            };
+          });
+          setSubscriptions(mappedSubs);
+        } else if (!error && (!supaSubs || supaSubs.length === 0)) {
+          // Auto-seed initial subscriptions to Supabase
+          for (const sub of INITIAL_SUBSCRIPTIONS) {
+            const subUuid = ensureUUID(sub.id);
+            const custUuid = ensureUUID(sub.customerId);
+            const planUuid = ensureUUID(sub.planId);
+            await client.from('subscriptions').upsert({
+              id: subUuid,
+              subscription_number: sub.number,
+              customer_id: custUuid,
+              plan_id: planUuid,
+              status: sub.status,
+              start_date: sub.startDate,
+              expiry_date: sub.expiryDate || null,
+              next_billing_date: sub.nextBillingDate,
+              payment_terms: sub.paymentTerms || 'Net 15',
+              notes: sub.notes || null
+            });
+            if (sub.lines && sub.lines.length > 0) {
+              for (const line of sub.lines) {
+                await client.from('subscription_line_items').upsert({
+                  id: generateUUID(),
+                  subscription_id: subUuid,
+                  product_id: ensureUUID(line.productId),
+                  variant_id: line.variantId ? ensureUUID(line.variantId) : null,
+                  quantity: line.quantity,
+                  unit_price: line.unitPrice,
+                  tax_percent: line.taxPercent || 18,
+                  discount_amount: line.discountAmount || 0,
+                  total_amount: line.totalAmount
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not sync subscriptions from Supabase:', err);
+      }
+    };
+    fetchSupabaseSubscriptions();
+
+    // Fetch Invoices & Lines from Supabase
+    const fetchSupabaseInvoices = async () => {
+      try {
+        const { data: supaInvoices, error } = await client
+          .from('invoices')
+          .select('*, invoice_line_items(*)');
+        if (!error && supaInvoices && supaInvoices.length > 0) {
+          const mappedInvoices: Invoice[] = supaInvoices.map((inv: any) => {
+            const sub = subscriptions.find((s) => s.id === inv.subscription_id || ensureUUID(s.id) === inv.subscription_id);
+            const customer = users.find((u) => u.id === inv.customer_id || ensureUUID(u.id) === inv.customer_id);
+            const isInter = Number(inv.igst_total) > 0;
+            return {
+              id: inv.id,
+              invoiceNumber: inv.invoice_number,
+              subscriptionId: inv.subscription_id,
+              subscriptionNumber: sub?.number || 'SUB-2026-001',
+              customerId: inv.customer_id,
+              customerName: customer?.name || 'Enterprise Customer',
+              customerGstin: customer?.gstin || '29AAACI1234M1Z2',
+              billingAddress: customer?.address || 'Embassy TechVillage, Bengaluru, Karnataka',
+              issueDate: inv.issue_date,
+              dueDate: inv.due_date,
+              status: inv.status as InvoiceStatus,
+              subtotal: Number(inv.subtotal),
+              discountTotal: Number(inv.discount_total) || 0,
+              cgstTotal: Number(inv.cgst_total) || 0,
+              sgstTotal: Number(inv.sgst_total) || 0,
+              igstTotal: Number(inv.igst_total) || 0,
+              taxTotal: Number(inv.tax_total),
+              totalAmount: Number(inv.total_amount),
+              amountPaid: Number(inv.amount_paid) || 0,
+              balanceDue: Number(inv.balance_due),
+              lines: (inv.invoice_line_items || []).map((l: any) => ({
+                id: l.id,
+                productId: l.product_id,
+                productName: products.find((p) => p.id === l.product_id || ensureUUID(p.id) === l.product_id)?.name || 'Enterprise License',
+                quantity: Number(l.quantity),
+                unitPrice: Number(l.unit_price),
+                taxPercent: Number(l.tax_percent) || 18,
+                cgstAmount: Number(l.cgst_amount) || 0,
+                sgstAmount: Number(l.sgst_amount) || 0,
+                igstAmount: Number(l.igst_amount) || 0,
+                discountAmount: Number(l.discount_amount) || 0,
+                totalAmount: Number(l.total_amount)
+              })),
+              idempotencyKey: inv.idempotency_key,
+              isInterState: isInter
+            };
+          });
+          setInvoices(mappedInvoices);
+        }
+      } catch (err) {
+        console.warn('Could not sync invoices from Supabase:', err);
+      }
+    };
+    fetchSupabaseInvoices();
+
+    // Fetch Payments from Supabase
+    const fetchSupabasePayments = async () => {
+      try {
+        const { data: supaPayments, error } = await client.from('payments').select('*');
+        if (!error && supaPayments && supaPayments.length > 0) {
+          const mappedPayments: Payment[] = supaPayments.map((p: any) => ({
+            id: p.id,
+            invoiceId: p.invoice_id,
+            invoiceNumber: invoices.find((i) => i.id === p.invoice_id)?.invoiceNumber || 'INV-2026-001',
+            customerId: p.customer_id,
+            customerName: users.find((u) => u.id === p.customer_id)?.name || 'Customer',
+            amount: Number(p.amount),
+            method: p.method as PaymentMethod,
+            paymentDate: p.payment_date,
+            transactionRef: p.transaction_ref,
+            notes: p.notes,
+            recordedBy: 'Finance Staff'
+          }));
+          setPayments(mappedPayments);
+        }
+      } catch (err) {
+        console.warn('Could not sync payments from Supabase:', err);
+      }
+    };
+    fetchSupabasePayments();
 
     // 3. Supabase Auth event listener
     const { data: authSub } = client.auth.onAuthStateChange(async (event, session) => {
@@ -1141,17 +1427,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Templates
+  // Templates (Phase 3 Quotation Template Persistence)
   const addTemplate = (tplData: Omit<QuotationTemplate, 'id'>) => {
+    const newId = generateUUID();
     const newTpl: QuotationTemplate = {
       ...tplData,
-      id: `tpl_${Date.now().toString(36)}`
+      id: newId
     };
     setTemplates((prev) => [...prev, newTpl]);
     addToast(`Saved quotation template "${newTpl.name}"`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('quotation_templates').insert({
+            id: newId,
+            name: newTpl.name,
+            plan_id: ensureUUID(newTpl.planId),
+            validity_days: newTpl.validityDays || 30
+          });
+          if (newTpl.items && newTpl.items.length > 0) {
+            const items = newTpl.items.map((it) => ({
+              id: generateUUID(),
+              template_id: newId,
+              product_id: ensureUUID(it.productId),
+              quantity: it.quantity,
+              discount_percent: it.discountPercent || 0
+            }));
+            await supabase.from('quotation_template_items').insert(items);
+          }
+        } catch (err) {
+          console.warn('Supabase template insert sync warning:', err);
+        }
+      })();
+    }
   };
 
-  // Subscription Lifecycle Engine
+  // Subscription Lifecycle Engine (Phase 3 Interactive Kanban State Machine)
   const isValidStateTransition = (current: SubscriptionStatus, target: SubscriptionStatus): boolean => {
     if (current === target) return true;
     const validMap: Record<SubscriptionStatus, SubscriptionStatus[]> = {
@@ -1168,8 +1480,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createSubscription = (subData: Partial<Subscription>): Subscription => {
     const count = subscriptions.length + 1;
     const num = `SUB-2026-${count.toString().padStart(3, '0')}`;
+    const newId = generateUUID();
     const newSub: Subscription = {
-      id: `sub_${Date.now().toString(36)}`,
+      id: newId,
       number: num,
       customerId: subData.customerId || users[0].id,
       customerName: subData.customerName || users[0].name,
@@ -1207,6 +1520,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     addToast(`Created subscription ${newSub.number} (${newSub.status})`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          const custUuid = ensureUUID(newSub.customerId);
+          const planUuid = ensureUUID(newSub.planId);
+          await supabase.from('subscriptions').insert({
+            id: newId,
+            subscription_number: newSub.number,
+            customer_id: custUuid,
+            plan_id: planUuid,
+            status: newSub.status,
+            start_date: newSub.startDate,
+            expiry_date: newSub.expiryDate || null,
+            next_billing_date: newSub.nextBillingDate,
+            payment_terms: newSub.paymentTerms,
+            notes: newSub.notes || null
+          });
+
+          if (newSub.lines && newSub.lines.length > 0) {
+            const lRows = newSub.lines.map((l) => ({
+              id: generateUUID(),
+              subscription_id: newId,
+              product_id: ensureUUID(l.productId),
+              variant_id: l.variantId ? ensureUUID(l.variantId) : null,
+              quantity: l.quantity,
+              unit_price: l.unitPrice,
+              tax_percent: l.taxPercent || 18,
+              discount_amount: l.discountAmount || 0,
+              total_amount: l.totalAmount
+            }));
+            await supabase.from('subscription_line_items').insert(lRows);
+          }
+        } catch (err) {
+          console.warn('Supabase subscription insert sync warning:', err);
+        }
+      })();
+    }
+
     return newSub;
   };
 
@@ -1231,26 +1583,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    const targetUuid = ensureUUID(id);
     setSubscriptions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
+      prev.map((s) => (s.id === id || s.id === targetUuid ? { ...s, status: newStatus } : s))
     );
     addToast(`Updated ${sub.number} state to ${newStatus}`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('subscriptions').update({
+            status: newStatus,
+            updated_at: new Date().toISOString()
+          }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase status update error:', err);
+        }
+      })();
+    }
+
     return true;
   };
 
-  // Customer Self-Approval & Activation Flow
+  // Customer Self-Approval & Activation Flow (Phase 3 Scene 3)
   const acceptQuotationAndActivate = (id: string): boolean => {
     const sub = subscriptions.find((s) => s.id === id);
     if (!sub) return false;
 
+    const targetUuid = ensureUUID(id);
     setSubscriptions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'ACTIVE' } : s))
+      prev.map((s) => (s.id === id || s.id === targetUuid ? { ...s, status: 'ACTIVE' } : s))
     );
 
     addToast(
       `Quotation ${sub.number} accepted by client! Subscription is now ACTIVE. Sales team notified.`,
       'success'
     );
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('subscriptions').update({
+            status: 'ACTIVE',
+            updated_at: new Date().toISOString()
+          }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase accept quotation error:', err);
+        }
+      })();
+    }
+
     return true;
   };
 
@@ -1258,12 +1640,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const sub = subscriptions.find((s) => s.id === id);
     if (!sub) return;
 
+    const targetUuid = ensureUUID(id);
+    const updatedNotes = `${sub.notes || ''}\n[Client Negotiation Request]: ${feedbackNotes}`;
+
     setSubscriptions((prev) =>
       prev.map((s) =>
-        s.id === id
+        s.id === id || s.id === targetUuid
           ? {
             ...s,
-            notes: `${s.notes || ''}\n[Client Negotiation Request]: ${feedbackNotes}`
+            notes: updatedNotes
           }
           : s
       )
@@ -1273,14 +1658,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Negotiation feedback sent to Brightloop sales representative for ${sub.number}.`,
       'info'
     );
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('subscriptions').update({
+            notes: updatedNotes,
+            updated_at: new Date().toISOString()
+          }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase negotiate quotation error:', err);
+        }
+      })();
+    }
   };
 
   const updateSubscription = (sub: Subscription) => {
-    setSubscriptions((prev) => prev.map((s) => (s.id === sub.id ? sub : s)));
+    const targetUuid = ensureUUID(sub.id);
+    setSubscriptions((prev) => prev.map((s) => (s.id === sub.id || s.id === targetUuid ? sub : s)));
     addToast(`Saved subscription ${sub.number}`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('subscriptions').update({
+            status: sub.status,
+            notes: sub.notes || null,
+            next_billing_date: sub.nextBillingDate,
+            expiry_date: sub.expiryDate || null,
+            updated_at: new Date().toISOString()
+          }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase update subscription error:', err);
+        }
+      })();
+    }
   };
 
-  // Bulk Billing Day Engine
+  // Bulk Billing Day Engine (Phase 4 Scenes 4 & 5)
   const triggerBillingDayRun = (targetDateStr?: string) => {
     const targetDate = targetDateStr || new Date().toISOString().split('T')[0];
     const dueSubscriptions = subscriptions.filter(
@@ -1290,27 +1705,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let createdCount = 0;
     let skippedCount = 0;
     const newInvoices: Invoice[] = [];
+    let updatedSubscriptions = [...subscriptions];
 
     dueSubscriptions.forEach((sub) => {
-      const idempotencyKey = `${sub.id}_${sub.nextBillingDate}`;
+      // Idempotency Hash: IDEM_{subId}_{nextBillingDate}
+      const idempotencyKey = `IDEM_${sub.id}_${sub.nextBillingDate}`;
 
+      // Idempotency check: strictly skip if invoice with this idempotencyKey already exists
       const exists = invoices.some((inv) => inv.idempotencyKey === idempotencyKey);
       if (exists) {
         skippedCount++;
         return;
       }
 
-      let subtotal = 0;
-      let discountTotal = 0;
+      // 1. Calculate Gross Subtotal
+      let grossSubtotal = 0;
+      sub.lines.forEach((l) => {
+        grossSubtotal += l.quantity * l.unitPrice;
+      });
 
+      // 2. Promotional Discount Rule Application
+      let discountTotal = sub.discountAmount || 0;
+      if (sub.appliedDiscountCode) {
+        const discRule = discounts.find(
+          (d) => d.code.toUpperCase() === sub.appliedDiscountCode?.toUpperCase() && d.isActive
+        );
+        if (discRule) {
+          const isStarted = !discRule.startDate || discRule.startDate <= targetDate;
+          const isNotExpired = !discRule.endDate || discRule.endDate >= targetDate;
+          const isUnderMaxUses = !discRule.maxUses || discRule.usedCount < discRule.maxUses;
+          const meetsMinSpend = !discRule.minSpend || grossSubtotal >= discRule.minSpend;
+
+          if (isStarted && isNotExpired && isUnderMaxUses && meetsMinSpend) {
+            if (discRule.type === 'PERCENTAGE') {
+              discountTotal = Number(((grossSubtotal * discRule.value) / 100).toFixed(2));
+            } else {
+              discountTotal = Math.min(grossSubtotal, discRule.value);
+            }
+          }
+        }
+      }
+
+      // 3. Indian GST Rules (Intra-state CGST 9% + SGST 9% vs Inter-state IGST 18%)
+      const isInter = isInterStateCustomer(sub.customerGstin, sub.customerName);
+      const netTaxable = Math.max(0, grossSubtotal - discountTotal);
+      const cgstTotal = isInter ? 0 : Number((netTaxable * 0.09).toFixed(2));
+      const sgstTotal = isInter ? 0 : Number((netTaxable * 0.09).toFixed(2));
+      const igstTotal = isInter ? Number((netTaxable * 0.18).toFixed(2)) : 0;
+      const taxTotal = cgstTotal + sgstTotal + igstTotal;
+      const grandTotal = Number((netTaxable + taxTotal).toFixed(2));
+
+      // 4. Line Items Calculation with GST Breakdown
       const invoiceLines = sub.lines.map((line, idx) => {
-        const lineTotal = line.quantity * line.unitPrice - line.discountAmount;
-        subtotal += line.quantity * line.unitPrice;
-        discountTotal += line.discountAmount;
-
-        const taxableAmount = Math.max(0, lineTotal);
-        const cgstAmount = taxableAmount * 0.09;
-        const sgstAmount = taxableAmount * 0.09;
+        const lineProportion = grossSubtotal > 0 ? (line.quantity * line.unitPrice) / grossSubtotal : 0;
+        const lineDiscount = Number((discountTotal * lineProportion).toFixed(2));
+        const lineTaxable = Math.max(0, line.quantity * line.unitPrice - lineDiscount);
+        const cgstAmount = isInter ? 0 : Number((lineTaxable * 0.09).toFixed(2));
+        const sgstAmount = isInter ? 0 : Number((lineTaxable * 0.09).toFixed(2));
+        const igstAmount = isInter ? Number((lineTaxable * 0.18).toFixed(2)) : 0;
 
         return {
           id: `inv_line_${Date.now()}_${idx}`,
@@ -1319,29 +1771,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           taxPercent: 18,
-          cgstAmount: Number(cgstAmount.toFixed(2)),
-          sgstAmount: Number(sgstAmount.toFixed(2)),
-          igstAmount: 0,
-          discountAmount: line.discountAmount,
-          totalAmount: taxableAmount
+          cgstAmount,
+          sgstAmount,
+          igstAmount,
+          discountAmount: lineDiscount,
+          totalAmount: lineTaxable
         };
       });
-
-      const netTaxable = Math.max(0, subtotal - discountTotal);
-      const cgstTotal = Number((netTaxable * 0.09).toFixed(2));
-      const sgstTotal = Number((netTaxable * 0.09).toFixed(2));
-      const taxTotal = cgstTotal + sgstTotal;
-      const totalAmount = Number((netTaxable + taxTotal).toFixed(2));
 
       const issueDate = targetDate;
       const due = new Date(targetDate);
       due.setDate(due.getDate() + 15);
       const dueDate = due.toISOString().split('T')[0];
 
-      const invNumber = `INV-2026-${(invoices.length + createdCount + 100).toString().padStart(3, '0')}`;
+      const invNumber = `INV-2026-${(invoices.length + createdCount + 101).toString().padStart(3, '0')}`;
+      const newInvId = generateUUID();
 
       const newInv: Invoice = {
-        id: `inv_${Date.now().toString(36)}_${createdCount}`,
+        id: newInvId,
         invoiceNumber: invNumber,
         subscriptionId: sub.id,
         subscriptionNumber: sub.number,
@@ -1352,55 +1799,152 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         issueDate,
         dueDate,
         status: 'CONFIRMED',
-        subtotal,
+        subtotal: grossSubtotal,
         discountTotal,
         cgstTotal,
         sgstTotal,
-        igstTotal: 0,
+        igstTotal,
         taxTotal,
-        totalAmount,
+        totalAmount: grandTotal,
         amountPaid: 0,
-        balanceDue: totalAmount,
+        balanceDue: grandTotal,
         lines: invoiceLines,
         idempotencyKey,
-        isInterState: false
+        isInterState: isInter
       };
 
       newInvoices.push(newInv);
       createdCount++;
+
+      // 5. Advance nextBillingDate on Subscription & Handle Closure Rules
+      const nextDate = advanceBillingDate(sub.nextBillingDate, sub.billingFrequency);
+      let newSubStatus = sub.status;
+      if (sub.closureRules?.autoCloseOnEnd && sub.expiryDate && nextDate > sub.expiryDate) {
+        newSubStatus = 'CLOSED';
+      }
+
+      updatedSubscriptions = updatedSubscriptions.map((s) =>
+        s.id === sub.id
+          ? {
+              ...s,
+              nextBillingDate: nextDate,
+              status: newSubStatus
+            }
+          : s
+      );
+
+      // Async write to Supabase (Zero Double-Billing with Idempotency Key Lock)
+      if (isSupabaseConfigured && supabase) {
+        (async () => {
+          try {
+            const invUuid = ensureUUID(newInvId);
+            const subUuid = ensureUUID(sub.id);
+            const custUuid = ensureUUID(sub.customerId);
+
+            await supabase.from('invoices').insert({
+              id: invUuid,
+              invoice_number: newInv.invoiceNumber,
+              subscription_id: subUuid,
+              customer_id: custUuid,
+              issue_date: issueDate,
+              due_date: dueDate,
+              status: 'CONFIRMED',
+              subtotal: newInv.subtotal,
+              discount_total: newInv.discountTotal,
+              cgst_total: newInv.cgstTotal,
+              sgst_total: newInv.sgstTotal,
+              igst_total: newInv.igstTotal,
+              tax_total: newInv.taxTotal,
+              total_amount: newInv.totalAmount,
+              amount_paid: 0,
+              balance_due: newInv.balanceDue,
+              idempotency_key: idempotencyKey
+            });
+
+            if (newInv.lines && newInv.lines.length > 0) {
+              const lRows = newInv.lines.map((l) => ({
+                id: generateUUID(),
+                invoice_id: invUuid,
+                product_id: ensureUUID(l.productId),
+                quantity: l.quantity,
+                unit_price: l.unitPrice,
+                tax_percent: 18,
+                cgst_amount: l.cgstAmount,
+                sgst_amount: l.sgstAmount,
+                igst_amount: l.igstAmount,
+                discount_amount: l.discountAmount,
+                total_amount: l.totalAmount
+              }));
+              await supabase.from('invoice_line_items').insert(lRows);
+            }
+
+            // Update subscription next billing date & auto-closure in Supabase
+            await supabase.from('subscriptions').update({
+              next_billing_date: nextDate,
+              status: newSubStatus,
+              updated_at: new Date().toISOString()
+            }).eq('id', subUuid);
+          } catch (err) {
+            console.warn('Supabase invoice batch run sync warning:', err);
+          }
+        })();
+      }
     });
 
     if (newInvoices.length > 0) {
       setInvoices((prev) => [...newInvoices, ...prev]);
+      setSubscriptions(updatedSubscriptions);
     }
 
     if (createdCount > 0) {
       addToast(
-        `Bulk Billing Day Engine: Generated ${createdCount} GST invoices. (${skippedCount} skipped by idempotency check)`,
+        `Bulk Billing Engine: Successfully generated ${createdCount} invoices. (${skippedCount} skipped by Idempotency Safeguard)`,
         'success'
       );
     } else {
-      addToast(`Billing Day Check: No new invoices due on or before ${targetDate}.`, 'info');
+      addToast(`Billing Day Check: No new invoices due on or before ${targetDate}. (${skippedCount} skipped by Idempotency Safeguard)`, 'info');
     }
 
     return { createdCount, skippedCount };
   };
 
   const confirmInvoice = (invoiceId: string) => {
+    const targetUuid = ensureUUID(invoiceId);
     setInvoices((prev) =>
-      prev.map((inv) => (inv.id === invoiceId ? { ...inv, status: 'CONFIRMED' } : inv))
+      prev.map((inv) => (inv.id === invoiceId || inv.id === targetUuid ? { ...inv, status: 'CONFIRMED' } : inv))
     );
     addToast('Invoice confirmed and published', 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('invoices').update({ status: 'CONFIRMED' }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase confirm invoice error:', err);
+        }
+      })();
+    }
   };
 
   const cancelInvoice = (invoiceId: string) => {
+    const targetUuid = ensureUUID(invoiceId);
     setInvoices((prev) =>
-      prev.map((inv) => (inv.id === invoiceId ? { ...inv, status: 'CANCELLED', balanceDue: 0 } : inv))
+      prev.map((inv) => (inv.id === invoiceId || inv.id === targetUuid ? { ...inv, status: 'CANCELLED', balanceDue: 0 } : inv))
     );
     addToast('Invoice cancelled and balance zeroed out', 'info');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('invoices').update({ status: 'CANCELLED', balance_due: 0 }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase cancel invoice error:', err);
+        }
+      })();
+    }
   };
 
-  // Payment Logging
+  // Payment Logging (Phase 4 & 5 Payments Ledger)
   const recordPayment = (pData: {
     invoiceId: string;
     amount: number;
@@ -1415,8 +1959,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const today = new Date().toISOString().split('T')[0];
+    const newPayId = generateUUID();
     const newPayment: Payment = {
-      id: `pay_${Date.now().toString(36)}`,
+      id: newPayId,
       invoiceId: inv.id,
       invoiceNumber: inv.invoiceNumber,
       customerId: inv.customerId,
@@ -1431,9 +1976,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setPayments((prev) => [newPayment, ...prev]);
 
-    const updatedPaid = inv.amountPaid + pData.amount;
-    const updatedBalance = Math.max(0, inv.totalAmount - updatedPaid);
-    const updatedStatus = updatedBalance <= 0.01 ? 'PAID' : inv.status;
+    const updatedPaid = Number((inv.amountPaid + pData.amount).toFixed(2));
+    const updatedBalance = Math.max(0, Number((inv.totalAmount - updatedPaid).toFixed(2)));
+    const updatedStatus: InvoiceStatus = updatedBalance <= 0.01 ? 'PAID' : inv.status;
 
     setInvoices((prev) =>
       prev.map((i) =>
@@ -1453,6 +1998,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Logged payment of ₹${pData.amount.toLocaleString('en-IN')} against ${inv.invoiceNumber}. Status: ${updatedStatus}`,
       'success'
     );
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          const invUuid = ensureUUID(inv.id);
+          const custUuid = ensureUUID(inv.customerId);
+          await supabase.from('payments').insert({
+            id: newPayId,
+            invoice_id: invUuid,
+            customer_id: custUuid,
+            amount: pData.amount,
+            method: pData.method,
+            payment_date: today,
+            transaction_ref: pData.transactionRef,
+            notes: pData.notes || null,
+            recorded_by: currentUser.id && currentUser.id.length === 36 ? currentUser.id : null
+          });
+
+          await supabase.from('invoices').update({
+            amount_paid: updatedPaid,
+            balance_due: updatedBalance,
+            status: updatedStatus
+          }).eq('id', invUuid);
+        } catch (err) {
+          console.warn('Supabase payment sync warning:', err);
+        }
+      })();
+    }
+
     return true;
   };
 
@@ -1625,6 +2199,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSubscriptions((prev) => prev.map((s) => (s.id === subId ? updated : s)));
     addToast(`Subscription ${sub.number} successfully renewed until ${newExpiryStr}!`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('subscriptions').update({
+            status: 'ACTIVE',
+            expiry_date: newExpiryStr,
+            notes: updated.notes,
+            updated_at: new Date().toISOString()
+          }).eq('id', ensureUUID(subId));
+        } catch (err) {
+          console.warn('Supabase renewal sync warning:', err);
+        }
+      })();
+    }
+
     return true;
   };
 

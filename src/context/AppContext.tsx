@@ -12,6 +12,8 @@ import {
   DiscountRule,
   PaymentMethod
 } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { setCookie, getCookie, deleteCookie } from '../lib/cookies';
 import {
   INITIAL_USERS,
   INITIAL_PRODUCTS,
@@ -48,8 +50,8 @@ interface AppContextType {
   screenMode: ScreenMode;
   setScreenMode: (mode: ScreenMode) => void;
   isAuthenticated: boolean;
-  login: (email: string, pass: string) => boolean;
-  loginAsRole: (role: UserRole) => void;
+  login: (email: string, pass: string) => Promise<boolean>;
+  registerCustomer: (customer: Omit<User, 'id' | 'role'> & { password?: string }) => Promise<boolean>;
   logout: () => void;
 
   // Theme & Identity
@@ -83,7 +85,7 @@ interface AppContextType {
   canManageDiscounts: boolean;
 
   // Actions
-  addUser: (user: Omit<User, 'id'>) => boolean;
+  addUser: (user: Omit<User, 'id'> & { password?: string }) => Promise<boolean>;
   addProduct: (product: Omit<Product, 'id'>) => void;
   updateProduct: (product: Product) => void;
   deleteProduct: (id: string) => void;
@@ -118,6 +120,14 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'brightloop_app_state_v3';
+const COOKIE_SESSION_KEY = 'brightloop_auth_token';
+const GUEST_USER: User = {
+  id: '',
+  name: 'Guest',
+  email: '',
+  role: 'CUSTOMER'
+};
+
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
@@ -145,10 +155,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_USERS;
   });
 
-  const [authenticatedUser, setAuthenticatedUser] = useState<User>(() => users[0]);
-  const [currentUser, setCurrentUser] = useState<User>(() => users[0]);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
-  const [screenMode, setScreenMode] = useState<ScreenMode>('APP');
+  const [authenticatedUser, setAuthenticatedUser] = useState<User>(() => {
+    const cookie = getCookie(COOKIE_SESSION_KEY);
+    if (cookie) {
+      try { return JSON.parse(cookie); } catch { return GUEST_USER; }
+    }
+    return GUEST_USER;
+  });
+  const [currentUser, setCurrentUser] = useState<User>(() => {
+    const cookie = getCookie(COOKIE_SESSION_KEY);
+    if (cookie) {
+      try { return JSON.parse(cookie); } catch { return GUEST_USER; }
+    }
+    return GUEST_USER;
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(getCookie(COOKIE_SESSION_KEY));
+  });
+  const [screenMode, setScreenMode] = useState<ScreenMode>('LOGIN');
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
 
   const [products, setProducts] = useState<Product[]>(() => {
@@ -201,64 +225,165 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Auth Functions
-  const login = (email: string, pass: string): boolean => {
-    const matched = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (matched) {
-      setAuthenticatedUser(matched);
-      setCurrentUser(matched);
-      setIsAuthenticated(true);
-      setScreenMode('APP');
+  // Synchronize users from Supabase if configured
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const fetchSupabaseUsers = async () => {
+      try {
+        const { data: supaUsers, error } = await supabase.from('users').select('*');
+        if (!error && supaUsers && supaUsers.length > 0) {
+          const mappedUsers: User[] = supaUsers.map((u: any) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            password: u.password_hash,
+            role: u.role as UserRole,
+            companyName: u.company_name,
+            gstin: u.gstin,
+            pan: u.pan,
+            phone: u.phone,
+            address: u.address
+          }));
+          setUsers(mappedUsers);
+        }
+      } catch (err) {
+        console.warn('Could not sync from Supabase:', err);
+      }
+    };
+    fetchSupabaseUsers();
+  }, []);
 
-      if (matched.role === 'CUSTOMER') setActiveView('customer_portal');
-      else if (matched.role === 'STAFF') setActiveView('subscriptions_kanban');
-      else setActiveView('dashboard');
+  // Strict Auth Function (Only Real Database Credentials)
+  const login = async (email: string, pass: string): Promise<boolean> => {
+    const trimmedEmail = email.trim();
 
-      addToast(`Welcome back, ${matched.name} (${matched.role})!`, 'success');
-      return true;
+    // 1. Supabase Postgres Authentication
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .ilike('email', trimmedEmail)
+          .single();
+
+        if (error || !data) {
+          addToast('Account not found in Supabase database. Please check your email or register as a new customer.', 'error');
+          return false;
+        }
+
+        if (!data.password_hash || data.password_hash !== pass) {
+          addToast('Invalid password. Access denied.', 'error');
+          return false;
+        }
+
+        const userObj: User = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role as UserRole,
+          companyName: data.company_name,
+          gstin: data.gstin,
+          pan: data.pan,
+          phone: data.phone,
+          address: data.address
+        };
+
+        setAuthenticatedUser(userObj);
+        setCurrentUser(userObj);
+        setIsAuthenticated(true);
+        setCookie(COOKIE_SESSION_KEY, JSON.stringify(userObj), 7);
+        setScreenMode('APP');
+
+        if (userObj.role === 'CUSTOMER') setActiveView('customer_portal');
+        else if (userObj.role === 'STAFF') setActiveView('subscriptions_kanban');
+        else setActiveView('dashboard');
+
+        addToast('Welcome back, ' + userObj.name + ' (' + userObj.role + ')!', 'success');
+        return true;
+      } catch (err: any) {
+        console.error('Supabase query error:', err);
+        addToast('Database connection error: ' + (err.message || 'Check Supabase keys'), 'error');
+        return false;
+      }
     }
 
-    // Default fallback
-    setAuthenticatedUser(users[0]);
-    setCurrentUser(users[0]);
-    setIsAuthenticated(true);
-    setScreenMode('APP');
-    setActiveView('dashboard');
-    addToast(`Authenticated as ${users[0].name} (${users[0].role})`, 'success');
-    return true;
+    // 2. Unconfigured Supabase Warning
+    addToast('Supabase is not configured yet! Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env to authenticate.', 'error');
+    return false;
   };
 
-  const loginAsRole = (role: UserRole) => {
-    const matched = users.find((u) => u.role === role) || {
-      id: `usr_${role.toLowerCase()}`,
-      name: `${role} User`,
-      email: `${role.toLowerCase()}@brightloop.io`,
-      role
-    };
+  // Customer Self-Registration (PDF Scene: A new customer signs up)
+  const registerCustomer = async (
+    customerData: Omit<User, 'id' | 'role'> & { password?: string }
+  ): Promise<boolean> => {
+    const trimmedEmail = customerData.email.trim();
 
-    setAuthenticatedUser(matched);
-    setCurrentUser(matched);
-    setIsAuthenticated(true);
-    setScreenMode('APP');
+    if (!isSupabaseConfigured || !supabase) {
+      addToast('Cannot register: Supabase database is not connected. Add credentials to .env', 'error');
+      return false;
+    }
 
-    if (role === 'CUSTOMER') setActiveView('customer_portal');
-    else if (role === 'STAFF') setActiveView('subscriptions_kanban');
-    else setActiveView('dashboard');
+    try {
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .ilike('email', trimmedEmail)
+        .maybeSingle();
 
-    addToast(`Authenticated as ${matched.name} (${role})`, 'success');
+      if (existing) {
+        addToast('An account with this email is already registered in Supabase!', 'error');
+        return false;
+      }
+
+      const { data: insertedUser, error: userError } = await supabase
+        .from('users')
+        .insert({
+          email: trimmedEmail,
+          password_hash: customerData.password || '',
+          role: 'CUSTOMER',
+          name: customerData.name,
+          company_name: customerData.companyName,
+          gstin: customerData.gstin,
+          phone: customerData.phone,
+          address: customerData.address
+        })
+        .select()
+        .single();
+
+      if (userError) {
+        addToast('Registration error: ' + userError.message, 'error');
+        return false;
+      }
+
+      await supabase.from('customer_profiles').insert({
+        user_id: insertedUser.id,
+        company_name: customerData.companyName || customerData.name,
+        gstin: customerData.gstin,
+        billing_address: customerData.address || 'India'
+      });
+
+      addToast('Customer account registered in Supabase! You can now log in.', 'success');
+      return true;
+    } catch (err: any) {
+      addToast('Registration failed: ' + err.message, 'error');
+      return false;
+    }
   };
 
   const logout = () => {
     setIsAuthenticated(false);
+    setAuthenticatedUser(GUEST_USER);
+    setCurrentUser(GUEST_USER);
+    deleteCookie(COOKIE_SESSION_KEY);
     setScreenMode('LOGIN');
     addToast('Signed out of Brightloop Software', 'info');
   };
 
   // Double-Guarded RBAC Permission Checks:
   // Requires both actual authenticatedUser AND active perspective to be ADMIN
-  const canManageCatalog = authenticatedUser.role === 'ADMIN' && currentUser.role === 'ADMIN';
-  const canManageIAM = authenticatedUser.role === 'ADMIN' && currentUser.role === 'ADMIN';
-  const canManageDiscounts = authenticatedUser.role === 'ADMIN' && currentUser.role === 'ADMIN';
+  const canManageCatalog = authenticatedUser.role === 'ADMIN';
+  const canManageIAM = authenticatedUser.role === 'ADMIN';
+  const canManageDiscounts = authenticatedUser.role === 'ADMIN';
 
   // Strict Switch Role Handler with Access Control Enforcement
   const switchRole = (targetRole: UserRole): boolean => {
@@ -308,22 +433,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // Add user (IAM)
-  const addUser = (userData: Omit<User, 'id'>): boolean => {
+  // Add user (IAM) - Admin provisions staff accounts
+  const addUser = async (userData: Omit<User, 'id'> & { password?: string }): Promise<boolean> => {
     if (!canManageIAM) {
       addToast('Access Denied: Only Administrators can create staff accounts!', 'error');
       return false;
     }
-    if (users.some((u) => u.email.toLowerCase() === userData.email.toLowerCase())) {
+    const trimmedEmail = userData.email.trim();
+    if (users.some((u) => u.email.toLowerCase() === trimmedEmail.toLowerCase())) {
       addToast('User with this email already exists!', 'error');
       return false;
     }
+
+    const newId = 'usr_' + Date.now().toString(36);
     const newUser: User = {
       ...userData,
-      id: `usr_${Date.now().toString(36)}`
+      id: newId,
+      email: trimmedEmail
     };
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('users').insert({
+          id: newId,
+          email: trimmedEmail,
+          password_hash: userData.password || '',
+          role: userData.role,
+          name: userData.name,
+          company_name: userData.companyName
+        });
+      } catch (err) {
+        console.error('Supabase staff creation error:', err);
+      }
+    }
+
     setUsers((prev) => [...prev, newUser]);
-    addToast(`Added staff member ${newUser.name} (${newUser.role})`, 'success');
+    addToast('Staff account for ' + newUser.name + ' (' + newUser.role + ') provisioned!', 'success');
     return true;
   };
 
@@ -772,7 +917,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setScreenMode,
         isAuthenticated,
         login,
-        loginAsRole,
+        authenticatedUser,
         logout,
         theme,
         toggleTheme,
@@ -796,6 +941,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         canManageCatalog,
         canManageIAM,
         canManageDiscounts,
+        registerCustomer,
         addUser,
         addProduct,
         updateProduct,

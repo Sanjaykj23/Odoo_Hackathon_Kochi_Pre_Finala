@@ -3,16 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { Router, useLocation, useNavigate } from './router/Router';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
-import { AuthModal } from './components/AuthModal';
 import { AccessRestricted } from './components/AccessRestricted';
-import { LandingPage } from './components/LandingPage';
-import { LoginPage } from './components/LoginPage';
 
+// Public Pages
+import { LandingPage } from './pages/LandingPage';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
+
+// Enterprise Components
 import { KanbanBoard } from './components/KanbanBoard';
 import { SubscriptionList } from './components/SubscriptionList';
 import { ProductCatalog } from './components/ProductCatalog';
@@ -24,90 +28,110 @@ import { FinanceDashboard } from './components/FinanceDashboard';
 import { CustomerPortal } from './components/CustomerPortal';
 import { StaffIAMView } from './components/StaffIAMView';
 
-const MainContent: React.FC = () => {
-  const { activeView, currentUser, canManageIAM } = useApp();
-  const [authModalOpen, setAuthModalOpen] = useState(false);
+const AuthenticatedLayout: React.FC = () => {
+  const { authenticatedUser, canManageIAM } = useApp();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const role = authenticatedUser.role;
+
+  // Auto-redirect if on a generic route or wrong base
+  useEffect(() => {
+    if (pathname === '/admin' || pathname === '/dashboard') {
+      navigate('/admin/dashboard');
+    } else if (pathname === '/finance') {
+      navigate('/finance/dashboard');
+    } else if (pathname === '/staff') {
+      navigate('/staff/kanban');
+    } else if (pathname === '/customer') {
+      navigate('/customer/portal');
+    }
+  }, [pathname, navigate]);
+
+  const renderActiveRoute = () => {
+    // 1. ADMIN ROUTES
+    if (pathname.startsWith('/admin')) {
+      if (role !== 'ADMIN') {
+        return <AccessRestricted requiredRole="Administrator" featureName="Admin Console" />;
+      }
+
+      if (pathname === '/admin/dashboard') return <FinanceDashboard />;
+      if (pathname === '/admin/catalog') return <ProductCatalog />;
+      if (pathname === '/admin/discounts') return <DiscountRulesView />;
+      if (pathname === '/admin/staff-iam') return <StaffIAMView />;
+      if (pathname === '/admin/subscriptions-kanban') return <KanbanBoard />;
+      if (pathname === '/admin/subscriptions-list') return <SubscriptionList />;
+      if (pathname === '/admin/quotations') return <QuotationManager />;
+      if (pathname === '/admin/billing-run') return <BillingEngineView />;
+      if (pathname === '/admin/invoices') return <InvoicesView />;
+      return <FinanceDashboard />;
+    }
+
+    // 2. FINANCE LEAD ROUTES
+    if (pathname.startsWith('/finance')) {
+      if (role !== 'FINANCE_LEAD' && role !== 'ADMIN') {
+        return <AccessRestricted requiredRole="Finance Lead / Admin" featureName="Finance Portal" />;
+      }
+
+      if (pathname === '/finance/dashboard') return <FinanceDashboard />;
+      if (pathname === '/finance/billing-run') return <BillingEngineView />;
+      if (pathname === '/finance/invoices') return <InvoicesView />;
+      if (pathname === '/finance/subscriptions-list') return <SubscriptionList />;
+      return <FinanceDashboard />;
+    }
+
+    // 3. STAFF (SALES REP) ROUTES
+    if (pathname.startsWith('/staff')) {
+      if (role !== 'STAFF' && role !== 'ADMIN') {
+        return <AccessRestricted requiredRole="Sales Staff / Admin" featureName="Sales Portal" />;
+      }
+
+      if (pathname === '/staff/kanban') return <KanbanBoard />;
+      if (pathname === '/staff/subscriptions-list') return <SubscriptionList />;
+      if (pathname === '/staff/quotations') return <QuotationManager />;
+      if (pathname === '/staff/catalog') return <ProductCatalog />;
+      if (pathname === '/staff/invoices') return <InvoicesView />;
+      return <KanbanBoard />;
+    }
+
+    // 4. CUSTOMER PORTAL ROUTES
+    if (pathname.startsWith('/customer')) {
+      if (role !== 'CUSTOMER' && role !== 'ADMIN') {
+        return <AccessRestricted requiredRole="Customer" featureName="Customer Self-Service Portal" />;
+      }
+      return <CustomerPortal />;
+    }
+
+    // Role-default fallback
+    if (role === 'ADMIN') return <FinanceDashboard />;
+    if (role === 'FINANCE_LEAD') return <FinanceDashboard />;
+    if (role === 'STAFF') return <KanbanBoard />;
+    return <CustomerPortal />;
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors">
-      <Navbar onOpenAuthModal={() => setAuthModalOpen(true)} />
+      <Navbar />
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
         <Sidebar />
 
         <main className="flex-1 min-w-0">
-          {activeView === 'dashboard' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Executive Financial Dashboard" />
-            ) : (
-              <FinanceDashboard />
-            ))}
-
-          {activeView === 'subscriptions_kanban' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Subscriptions Kanban Board" />
-            ) : (
-              <KanbanBoard />
-            ))}
-
-          {activeView === 'subscriptions_list' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Subscriptions Table Matrix" />
-            ) : (
-              <SubscriptionList />
-            ))}
-
-          {activeView === 'catalog' && <ProductCatalog />}
-
-          {activeView === 'quotations' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Quotation Template Builder" />
-            ) : (
-              <QuotationManager />
-            ))}
-
-          {activeView === 'billing_run' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Bulk Billing Engine" />
-            ) : (
-              <BillingEngineView />
-            ))}
-
-          {activeView === 'invoices' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Invoices Ledger" />
-            ) : (
-              <InvoicesView />
-            ))}
-
-          {activeView === 'discounts' &&
-            (currentUser.role === 'CUSTOMER' ? (
-              <AccessRestricted requiredRole="Administrator / Staff / Finance Lead" featureName="Discount Rules Engine" />
-            ) : (
-              <DiscountRulesView />
-            ))}
-
-          {activeView === 'staff_iam' &&
-            (!canManageIAM ? (
-              <AccessRestricted requiredRole="Administrator" featureName="Staff IAM & Account Provisioning" />
-            ) : (
-              <StaffIAMView />
-            ))}
-
-          {activeView === 'customer_portal' && <CustomerPortal />}
+          {renderActiveRoute()}
         </main>
       </div>
 
       <ToastContainer />
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );
 };
 
-const AppContainer: React.FC = () => {
-  const { screenMode } = useApp();
+const AppRoutes: React.FC = () => {
+  const { isAuthenticated, authenticatedUser } = useApp();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
 
-  if (screenMode === 'LANDING') {
+  // Public Routes (Accessible without login)
+  if (pathname === '/' || pathname === '') {
     return (
       <>
         <LandingPage />
@@ -116,7 +140,7 @@ const AppContainer: React.FC = () => {
     );
   }
 
-  if (screenMode === 'LOGIN') {
+  if (pathname === '/login') {
     return (
       <>
         <LoginPage />
@@ -125,13 +149,35 @@ const AppContainer: React.FC = () => {
     );
   }
 
-  return <MainContent />;
+  if (pathname === '/register') {
+    return (
+      <>
+        <RegisterPage />
+        <ToastContainer />
+      </>
+    );
+  }
+
+  // Protected Routes: If not logged in, redirect directly to /login
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LoginPage />
+        <ToastContainer />
+      </>
+    );
+  }
+
+  // Authenticated Dashboard Layout
+  return <AuthenticatedLayout />;
 };
 
 export default function App() {
   return (
     <AppProvider>
-      <AppContainer />
+      <Router>
+        <AppRoutes />
+      </Router>
     </AppProvider>
   );
 }

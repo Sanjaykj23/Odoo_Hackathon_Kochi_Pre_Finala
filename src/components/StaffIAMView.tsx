@@ -34,6 +34,7 @@ export const StaffIAMView: React.FC = () => {
       name,
       email,
       role,
+      password,
       companyName
     });
 

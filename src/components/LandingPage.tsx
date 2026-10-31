@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
-  const { setScreenMode, loginAsRole, products, billingPlans } = useApp();
+  const { setScreenMode, products, billingPlans } = useApp();
 
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 

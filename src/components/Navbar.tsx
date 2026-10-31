@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole } from '../types';
+import { useNavigate, Link } from '../router/Router';
 import {
   Zap,
   Sun,
@@ -10,69 +10,80 @@ import {
   Building2,
   PieChart,
   LogOut,
-  User as UserIcon,
-  ChevronDown,
-  Home,
-  Lock
+  User as UserIcon
 } from 'lucide-react';
 
 interface NavbarProps {
-  onOpenAuthModal: () => void;
+  onOpenAuthModal?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
+export const Navbar: React.FC<NavbarProps> = () => {
   const {
     theme,
     toggleTheme,
     authenticatedUser,
-    currentUser,
-    switchRole,
     triggerBillingDayRun,
-    setActiveView,
-    logout,
-    setScreenMode,
-    addToast
+    logout
   } = useApp();
-
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
-
-  const roles: { role: UserRole; label: string; icon: React.ReactNode; desc: string }[] = [
-    {
-      role: 'ADMIN',
-      label: 'Administrator',
-      icon: <ShieldCheck className="w-4 h-4 text-purple-500" />,
-      desc: 'Master catalog, tax rules, staff IAM'
-    },
-    {
-      role: 'STAFF',
-      label: 'Sales Rep / Internal Staff',
-      icon: <UserCheck className="w-4 h-4 text-blue-500" />,
-      desc: 'Quotations, subscriptions Kanban, payment log'
-    },
-    {
-      role: 'FINANCE_LEAD',
-      label: 'Finance Lead Executive',
-      icon: <PieChart className="w-4 h-4 text-emerald-500" />,
-      desc: 'MRR/ARR revenue reports, overdue aging'
-    },
-    {
-      role: 'CUSTOMER',
-      label: 'Customer Self-Service Portal',
-      icon: <Building2 className="w-4 h-4 text-amber-500" />,
-      desc: 'View personal plans, invoices & GST receipts'
-    }
-  ];
+  const navigate = useNavigate();
 
   const handleTriggerBilling = () => {
     triggerBillingDayRun();
-    setActiveView('invoices');
+    if (authenticatedUser.role === 'ADMIN') {
+      navigate('/admin/invoices');
+    } else {
+      navigate('/finance/invoices');
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return {
+          label: 'Administrator',
+          bg: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300 dark:border-purple-800',
+          icon: <ShieldCheck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+        };
+      case 'FINANCE_LEAD':
+        return {
+          label: 'Finance Lead',
+          bg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800',
+          icon: <PieChart className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+        };
+      case 'STAFF':
+        return {
+          label: 'Sales Staff',
+          bg: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300 dark:border-blue-800',
+          icon: <UserCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+        };
+      default:
+        return {
+          label: 'Customer',
+          bg: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+          icon: <Building2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+        };
+    }
+  };
+
+  const badgeInfo = getRoleBadge(authenticatedUser.role);
+
+  const getHomeRoute = () => {
+    if (authenticatedUser.role === 'ADMIN') return '/admin/dashboard';
+    if (authenticatedUser.role === 'FINANCE_LEAD') return '/finance/dashboard';
+    if (authenticatedUser.role === 'STAFF') return '/staff/kanban';
+    return '/customer/portal';
   };
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Zone 1: Brand Wordmark */}
-        <div className="flex items-center gap-3 shrink-0">
+        <Link to={getHomeRoute()} className="flex items-center gap-3 shrink-0">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-500 flex items-center justify-center text-white font-bold text-lg shadow-xs">
             B
           </div>
@@ -86,93 +97,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
               <span>GST 18% Compliant</span>
             </div>
           </div>
-        </div>
+        </Link>
 
-        {/* Zone 2: Navigation Controls & Fast Role Switcher */}
+        {/* Zone 2: Authenticated User Profile & Controls */}
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => setScreenMode('LANDING')}
-            className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            title="Go to Company Landing Page"
-          >
-            <Home className="w-4 h-4" />
-          </button>
-
-          {/* Fast Role Switcher */}
-          <div className="relative">
-            <button
-              onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
-              title="Switch user perspective role"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="hidden sm:inline">Role:</span>
-              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                {currentUser.role}
+          {/* Active Logged-in User Profile Badge */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs shadow-xs">
+            <div className="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-[11px]">
+              {authenticatedUser.name ? authenticatedUser.name.charAt(0).toUpperCase() : <UserIcon className="w-3.5 h-3.5" />}
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="font-semibold text-slate-800 dark:text-slate-100 leading-tight">
+                {authenticatedUser.name || 'User'}
               </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {roleMenuOpen && (
-              <div className="absolute right-0 mt-2 w-72 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 mb-1">
-                  <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                    Authenticated Session:
-                  </div>
-                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono flex items-center justify-between">
-                    <span>{authenticatedUser.name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 font-bold">
-                      {authenticatedUser.role}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                  Select Perspective / Persona
-                </div>
-
-                {roles.map((r) => {
-                  const isRestricted =
-                    (authenticatedUser.role !== 'ADMIN' && r.role === 'ADMIN') ||
-                    (authenticatedUser.role === 'STAFF' && r.role === 'FINANCE_LEAD') ||
-                    (authenticatedUser.role === 'CUSTOMER' && r.role !== 'CUSTOMER');
-
-                  return (
-                    <button
-                      key={r.role}
-                      disabled={isRestricted}
-                      onClick={() => {
-                        const success = switchRole(r.role);
-                        if (success) setRoleMenuOpen(false);
-                      }}
-                      className={`w-full text-left flex items-start gap-3 p-2.5 rounded-lg transition-colors ${
-                        isRestricted
-                          ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-950'
-                          : currentUser.role === r.role
-                          ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-100 font-medium'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      <div className="mt-0.5">{r.icon}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold flex items-center justify-between">
-                          <span>{r.label}</span>
-                          {isRestricted && (
-                            <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-rose-500">
-                              <Lock className="w-3 h-3" />
-                              <span>Restricted</span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                          {r.desc}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+              <span className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">
+                {authenticatedUser.email}
+              </span>
+            </div>
+            <div className={`ml-1 flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeInfo.bg}`}>
+              {badgeInfo.icon}
+              <span>{badgeInfo.label}</span>
+            </div>
           </div>
 
           {/* Theme Toggle */}
@@ -184,27 +129,29 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-400" />}
           </button>
 
-          {/* User Account & Logout */}
+          {/* Sign Out Button */}
           <button
-            onClick={logout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium text-rose-600 dark:text-rose-400 transition-colors"
-            title="Sign Out"
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70 text-xs font-semibold text-rose-700 dark:text-rose-300 transition-colors shadow-xs"
+            title="Log out of session"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sign Out</span>
+            <LogOut className="w-3.5 h-3.5 text-rose-500" />
+            <span className="hidden sm:inline">Log Out</span>
           </button>
         </div>
 
-        {/* Zone 3: Primary Action */}
-        <div className="shrink-0 hidden lg:block">
-          <button
-            onClick={handleTriggerBilling}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.98]"
-          >
-            <Zap className="w-4 h-4 text-amber-300" />
-            <span>Trigger Billing Day</span>
-          </button>
-        </div>
+        {/* Zone 3: Primary Action (Admin & Finance Lead Only) */}
+        {(authenticatedUser.role === 'ADMIN' || authenticatedUser.role === 'FINANCE_LEAD') && (
+          <div className="shrink-0 hidden lg:block">
+            <button
+              onClick={handleTriggerBilling}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.98]"
+            >
+              <Zap className="w-4 h-4 text-amber-300" />
+              <span>Trigger Billing Day</span>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

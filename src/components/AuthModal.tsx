@@ -8,7 +8,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const { users, setCurrentUser, addToast } = useApp();
+  const { login, addToast } = useApp();
 
   const [mode, setMode] = useState<'LOGIN' | 'FORGOT'>('LOGIN');
   const [email, setEmail] = useState('');
@@ -17,18 +17,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const matched = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-
-    if (matched) {
-      setCurrentUser(matched);
-      addToast(`Logged in successfully as ${matched.name} (${matched.role})`, 'success');
-      onClose();
-    } else {
-      // Allow fallback login with first user
-      setCurrentUser(users[0]);
-      addToast(`Account authenticated as ${users[0].name} (${users[0].role})`, 'success');
+    const success = await login(email, password);
+    if (success) {
       onClose();
     }
   };

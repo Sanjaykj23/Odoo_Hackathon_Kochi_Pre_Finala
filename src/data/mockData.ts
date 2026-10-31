@@ -9,77 +9,7 @@ import {
   DiscountRule
 } from '../types';
 
-export const INITIAL_USERS: User[] = [
-  {
-    id: 'usr_admin',
-    name: 'Ananya Sharma',
-    email: 'admin@brightloop.io',
-    role: 'ADMIN',
-    companyName: 'Brightloop Software Pvt Ltd',
-    gstin: '29AAACB9999A1Z1',
-    pan: 'AAACB9999A',
-    phone: '+91 98765 43210',
-    address: 'Embassy TechVillage, Outer Ring Road, Bengaluru, Karnataka 560103'
-  },
-  {
-    id: 'usr_staff',
-    name: 'Rahul Verma',
-    email: 'rahul.v@brightloop.io',
-    role: 'STAFF',
-    companyName: 'Brightloop Software Pvt Ltd'
-  },
-  {
-    id: 'usr_customer1',
-    name: 'Infosys Tech Solutions',
-    email: 'billing@infosystechnologies.com',
-    role: 'CUSTOMER',
-    companyName: 'Infosys Tech Solutions Ltd',
-    gstin: '29AAACI1234H1Z5',
-    pan: 'AAACI1234H',
-    phone: '+91 80 2852 0261',
-    address: 'Electronics City, Hosur Road, Bengaluru, Karnataka 560100'
-  },
-  {
-    id: 'usr_customer2',
-    name: 'Wipro Digital Systems',
-    email: 'accounts@wiprodigital.in',
-    role: 'CUSTOMER',
-    companyName: 'Wipro Digital Systems Pvt Ltd',
-    gstin: '27AAACW5678J1ZB',
-    pan: 'AAACW5678J',
-    phone: '+91 22 6700 8000',
-    address: 'BKC Bandra East, Mumbai, Maharashtra 400051'
-  },
-  {
-    id: 'usr_customer3',
-    name: 'TCS Enterprise Services',
-    email: 'finance@tcs-enterprise.com',
-    role: 'CUSTOMER',
-    companyName: 'TCS Enterprise Services India',
-    gstin: '07AAACT9012K1Z3',
-    pan: 'AAACT9012K',
-    phone: '+91 11 4567 8900',
-    address: 'Connaught Place, New Delhi 110001'
-  },
-  {
-    id: 'usr_customer4',
-    name: 'Shree Ram Enterprises',
-    email: 'shreeram.shop@gmail.com',
-    role: 'CUSTOMER',
-    companyName: 'Shree Ram Enterprises (Retail Shop)',
-    gstin: '33ABCDE1234F1Z9',
-    pan: 'ABCDE1234F',
-    phone: '+91 94440 12345',
-    address: 'T Nagar, Chennai, Tamil Nadu 600017'
-  },
-  {
-    id: 'usr_finance',
-    name: 'Vikramaditya Rao',
-    email: 'vikram.finance@brightloop.io',
-    role: 'FINANCE_LEAD',
-    companyName: 'Brightloop Software Pvt Ltd'
-  }
-];
+export const INITIAL_USERS: User[] = [];
 
 export const INITIAL_PRODUCTS: Product[] = [
   // --- SOFTWARE PRODUCTS ---

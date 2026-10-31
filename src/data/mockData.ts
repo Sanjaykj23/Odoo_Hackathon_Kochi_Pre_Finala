@@ -248,6 +248,22 @@ export const INITIAL_PLANS: BillingPlan[] = [
       allowPause: false,
       allowRenew: false
     }
+  },
+  {
+    id: 'plan_daily_poc',
+    name: 'Daily Enterprise Proof-of-Concept',
+    description: 'Rapid 24-hour enterprise evaluation cadence with automated closure.',
+    frequency: 'DAILY',
+    basePrice: 500,
+    minQuantity: 1,
+    startDate: '2026-01-01',
+    allowedProductIds: ['prod_erp', 'prod_crm', 'prod_api'],
+    closureRules: {
+      autoCloseOnEnd: true,
+      allowEarlyClose: true,
+      allowPause: false,
+      allowRenew: false
+    }
   }
 ];
 

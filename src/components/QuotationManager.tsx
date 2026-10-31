@@ -33,6 +33,8 @@ export const QuotationManager: React.FC = () => {
     products,
     users,
     discounts,
+    templates,
+    addTemplate,
     addUser,
     createSubscription,
     setActiveView
@@ -62,6 +64,26 @@ export const QuotationManager: React.FC = () => {
   const [offerValidityDays, setOfferValidityDays] = useState<number>(30);
   const [customOfferTitle, setCustomOfferTitle] = useState('Enterprise Multi-Seat License Agreement');
   const [showFormulaInfo, setShowFormulaInfo] = useState(false);
+
+  const handleApplyTemplate = (tplId: string) => {
+    if (!tplId) return;
+    const tpl = templates.find((t) => t.id === tplId);
+    if (!tpl) return;
+    setOfferValidityDays(tpl.validityDays || 30);
+    const plan = billingPlans.find((p) => p.id === tpl.planId);
+    if (plan) setSelectedDuration(plan.frequency);
+    if (tpl.items && tpl.items.length > 0) {
+      setLineItems(
+        tpl.items.map((it, idx) => ({
+          id: `line_${Date.now()}_${idx}`,
+          productId: it.productId,
+          variantId: '',
+          quantity: it.quantity
+        }))
+      );
+    }
+    setCustomOfferTitle(tpl.name);
+  };
 
   // Add line item
   const handleAddLine = () => {
@@ -265,6 +287,32 @@ export const QuotationManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Quotation Template Selector Bar (Scene 3) */}
+      <div className="bg-gradient-to-r from-[#F0EDFA] via-white to-[#E1F3EB] p-4 rounded-3xl border border-[#E3DCF7] shadow-[0_4px_20px_rgba(41,42,58,0.02)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <Sparkles className="w-4 h-4 text-[#6254E8]" />
+          <div>
+            <div className="font-bold text-[#252735]">Quotation Template Builder (Scene 3)</div>
+            <div className="text-[11px] text-[#697386]">Pre-fill software bundles, seat quotas, and validity terms with 1-click.</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-[#697386]">Select Template:</span>
+          <select
+            onChange={(e) => handleApplyTemplate(e.target.value)}
+            className="p-2 rounded-xl bg-white border border-[#DCE5ED] font-semibold text-[#252735] text-xs focus:ring-2 focus:ring-[#6254E8] cursor-pointer"
+          >
+            <option value="">-- Apply Quotation Template --</option>
+            {templates.map((tpl) => (
+              <option key={tpl.id} value={tpl.id}>
+                {tpl.name} ({tpl.validityDays} Days Validity)
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

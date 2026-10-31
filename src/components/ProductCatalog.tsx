@@ -26,8 +26,10 @@ export const ProductCatalog: React.FC = () => {
     billingPlans,
     addProduct,
     updateProduct,
+    deleteProduct,
     addBillingPlan,
     updateBillingPlan,
+    deleteBillingPlan,
     canManageCatalog,
     currentUser
   } = useApp();
@@ -46,8 +48,10 @@ export const ProductCatalog: React.FC = () => {
   const [costPrice, setCostPrice] = useState(3200);
   const [notes, setNotes] = useState('');
   const [supportedFreqs, setSupportedFreqs] = useState<BillingFrequency[]>(['MONTHLY', 'YEARLY']);
-  const [varName, setVarName] = useState('');
-  const [varPrice, setVarPrice] = useState(560);
+  const [variantsList, setVariantsList] = useState<Array<{ id: string; name: string; attributeName: string; priceAdjustment: number }>>([]);
+  const [newVarName, setNewVarName] = useState('');
+  const [newVarAttr, setNewVarAttr] = useState('Brand Integration');
+  const [newVarPrice, setNewVarPrice] = useState(560);
 
   // Plan Modals State
   const [planModalOpen, setPlanModalOpen] = useState(false);
@@ -62,6 +66,8 @@ export const ProductCatalog: React.FC = () => {
   const [allowedProds, setAllowedProds] = useState<string[]>([]);
   const [allowPause, setAllowPause] = useState(true);
   const [allowEarlyClose, setAllowEarlyClose] = useState(true);
+  const [autoCloseOnEnd, setAutoCloseOnEnd] = useState(false);
+  const [allowRenew, setAllowRenew] = useState(true);
 
   // Open Edit Product
   const handleOpenEditProduct = (p: Product) => {
@@ -73,8 +79,9 @@ export const ProductCatalog: React.FC = () => {
     setCostPrice(p.costPrice);
     setNotes(p.notes || '');
     setSupportedFreqs(p.supportedFrequencies || ['MONTHLY', 'YEARLY']);
-    setVarName('');
-    setVarPrice(560);
+    setVariantsList(p.variants || []);
+    setNewVarName('');
+    setNewVarPrice(560);
     setProductModalOpen(true);
   };
 
@@ -88,27 +95,31 @@ export const ProductCatalog: React.FC = () => {
     setCostPrice(3200);
     setNotes('');
     setSupportedFreqs(['MONTHLY', 'YEARLY']);
-    setVarName('');
-    setVarPrice(560);
+    setVariantsList([]);
+    setNewVarName('');
+    setNewVarPrice(560);
     setProductModalOpen(true);
+  };
+
+  const handleAddVariantItem = () => {
+    if (!newVarName) return;
+    const item = {
+      id: `var_${Date.now()}`,
+      name: newVarName.trim(),
+      attributeName: newVarAttr.trim() || 'Custom Variant',
+      priceAdjustment: Number(newVarPrice) || 0
+    };
+    setVariantsList((prev) => [...prev, item]);
+    setNewVarName('');
+  };
+
+  const handleRemoveVariantItem = (varId: string) => {
+    setVariantsList((prev) => prev.filter((v) => v.id !== varId));
   };
 
   const handleProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!prodName) return;
-
-    const existingVars = editingProduct ? editingProduct.variants : [];
-    const newVars = varName
-      ? [
-          ...existingVars,
-          {
-            id: `var_${Date.now()}`,
-            name: varName,
-            attributeName: 'Brand/Addon',
-            priceAdjustment: varPrice
-          }
-        ]
-      : existingVars;
 
     if (editingProduct) {
       updateProduct({
@@ -119,7 +130,7 @@ export const ProductCatalog: React.FC = () => {
         costPrice,
         notes,
         supportedFrequencies: supportedFreqs,
-        variants: newVars
+        variants: variantsList
       });
     } else {
       addProduct({
@@ -130,7 +141,7 @@ export const ProductCatalog: React.FC = () => {
         notes,
         hsnSacCode: prodType === 'SOFTWARE' ? '998313' : prodType === 'ADDON' ? '998316' : '998315',
         supportedFrequencies: supportedFreqs,
-        variants: newVars
+        variants: variantsList
       });
     }
 
@@ -144,10 +155,12 @@ export const ProductCatalog: React.FC = () => {
     setPlanDesc(plan.description);
     setFrequency(plan.frequency);
     setBasePrice(plan.basePrice);
-    setMinQty(plan.minQuantity);
+    setMinQty(plan.minQuantity || 1);
     setAllowedProds(plan.allowedProductIds || products.map((p) => p.id));
-    setAllowPause(plan.closureRules.allowPause);
-    setAllowEarlyClose(plan.closureRules.allowEarlyClose);
+    setAllowPause(plan.closureRules.allowPause ?? true);
+    setAllowEarlyClose(plan.closureRules.allowEarlyClose ?? true);
+    setAutoCloseOnEnd(plan.closureRules.autoCloseOnEnd ?? false);
+    setAllowRenew(plan.closureRules.allowRenew ?? true);
     setPlanModalOpen(true);
   };
 
@@ -162,6 +175,8 @@ export const ProductCatalog: React.FC = () => {
     setAllowedProds(products.map((p) => p.id));
     setAllowPause(true);
     setAllowEarlyClose(true);
+    setAutoCloseOnEnd(false);
+    setAllowRenew(true);
     setPlanModalOpen(true);
   };
 
@@ -179,9 +194,10 @@ export const ProductCatalog: React.FC = () => {
         minQuantity: minQty,
         allowedProductIds: allowedProds,
         closureRules: {
-          ...editingPlan.closureRules,
+          autoCloseOnEnd,
+          allowEarlyClose,
           allowPause,
-          allowEarlyClose
+          allowRenew
         }
       });
     } else {
@@ -194,10 +210,10 @@ export const ProductCatalog: React.FC = () => {
         startDate: new Date().toISOString().split('T')[0],
         allowedProductIds: allowedProds,
         closureRules: {
-          autoCloseOnEnd: false,
+          autoCloseOnEnd,
           allowEarlyClose,
           allowPause,
-          allowRenew: true
+          allowRenew
         }
       });
     }
@@ -611,6 +627,76 @@ export const ProductCatalog: React.FC = () => {
                 </div>
               </div>
 
+              {/* Product Attribute Variants Section (Scene 2) */}
+              <div className="pt-2 border-t border-[#E3E8EE] space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-[#252735]">
+                    Attribute Variants & Add-on Pricing (Scene 2)
+                  </label>
+                  <span className="text-[10px] text-[#6254E8] font-bold">
+                    {variantsList.length} defined
+                  </span>
+                </div>
+
+                {variantsList.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {variantsList.map((v) => (
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between p-2 rounded-xl bg-[#F0EDFA]/40 border border-[#E3DCF7] text-xs"
+                      >
+                        <div>
+                          <div className="font-semibold text-[#252735]">{v.name}</div>
+                          <div className="text-[10px] text-[#697386]">{v.attributeName}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-[#6254E8]">
+                            +₹{v.priceAdjustment.toLocaleString('en-IN')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVariantItem(v.id)}
+                            className="text-[#D34545] hover:bg-[#FFEBEB] p-1 rounded-lg transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="p-2.5 rounded-2xl bg-[#EAF3F8]/50 border border-[#DCE5ED] space-y-2">
+                  <div className="text-[10px] font-bold text-[#697386] uppercase tracking-wider">
+                    Add Product Variant (e.g. Odoo Integration):
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Variant name"
+                      value={newVarName}
+                      onChange={(e) => setNewVarName(e.target.value)}
+                      className="p-1.5 rounded-lg border border-[#E3E8EE] bg-white text-xs text-[#252735]"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Add-on Price (+₹)"
+                      value={newVarPrice}
+                      onChange={(e) => setNewVarPrice(parseInt(e.target.value) || 0)}
+                      className="p-1.5 rounded-lg border border-[#E3E8EE] bg-white text-xs font-mono text-[#252735]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddVariantItem}
+                    className="w-full py-1.5 rounded-lg bg-white hover:bg-[#F0EDFA] border border-[#7A8CE8]/40 text-[#6254E8] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Variant (+₹{newVarPrice})</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E3E8EE]">
                 <button
                   type="button"
@@ -692,6 +778,65 @@ export const ProductCatalog: React.FC = () => {
                   onChange={(e) => setPlanDesc(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-[#252735] outline-hidden focus:border-[#6254E8]"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#252735] mb-1">Minimum License Quantity</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={minQty}
+                  onChange={(e) => setMinQty(parseInt(e.target.value) || 1)}
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-[#252735] font-mono outline-hidden focus:border-[#6254E8]"
+                />
+              </div>
+
+              {/* Plan Closure & Policy Rules */}
+              <div className="pt-2 border-t border-[#E3E8EE] space-y-2">
+                <label className="block font-semibold text-[#252735]">
+                  Plan Closure & Policy Rules (Scene 2)
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <label className="flex items-center gap-2 p-2 rounded-xl border border-[#E3E8EE] bg-[#EAF3F8]/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowPause}
+                      onChange={(e) => setAllowPause(e.target.checked)}
+                      className="rounded text-[#6254E8] focus:ring-[#6254E8]"
+                    />
+                    <span className="font-medium text-[#252735]">Allow Pause</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2 rounded-xl border border-[#E3E8EE] bg-[#EAF3F8]/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowEarlyClose}
+                      onChange={(e) => setAllowEarlyClose(e.target.checked)}
+                      className="rounded text-[#6254E8] focus:ring-[#6254E8]"
+                    />
+                    <span className="font-medium text-[#252735]">Allow Early Close</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2 rounded-xl border border-[#E3E8EE] bg-[#EAF3F8]/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoCloseOnEnd}
+                      onChange={(e) => setAutoCloseOnEnd(e.target.checked)}
+                      className="rounded text-[#6254E8] focus:ring-[#6254E8]"
+                    />
+                    <span className="font-medium text-[#252735]">Auto-Close on End</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2 rounded-xl border border-[#E3E8EE] bg-[#EAF3F8]/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowRenew}
+                      onChange={(e) => setAllowRenew(e.target.checked)}
+                      className="rounded text-[#6254E8] focus:ring-[#6254E8]"
+                    />
+                    <span className="font-medium text-[#252735]">Allow Renew</span>
+                  </label>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E3E8EE]">

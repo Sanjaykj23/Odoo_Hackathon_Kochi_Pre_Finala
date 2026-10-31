@@ -12,7 +12,7 @@ import {
   DiscountRule,
   PaymentMethod
 } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, createIsolatedAuthClient } from '../lib/supabase';
 import { setCookie, getCookie, deleteCookie } from '../lib/cookies';
 import {
   INITIAL_USERS,
@@ -53,6 +53,8 @@ interface AppContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   registerCustomer: (customer: Omit<User, 'id' | 'role'> & { password?: string }) => Promise<boolean>;
   logout: () => void;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
+  provisionAdminUser: () => Promise<{ success: boolean; message: string }>;
 
   // Theme & Identity
   theme: 'light' | 'dark';
@@ -115,6 +117,10 @@ interface AppContextType {
     notes: string,
     validityDays: number
   ) => boolean;
+  upgradeSubscriptionPlan: (subId: string, newPlanId: string) => { success: boolean; proratedDiff: number; message: string };
+  requestSubscriptionAction: (subId: string, action: 'PAUSE' | 'RESUME' | 'CANCEL') => boolean;
+  renewSubscriptionContract: (subId: string, extensionMonths?: number) => boolean;
+  deleteBillingPlan: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -128,6 +134,46 @@ const GUEST_USER: User = {
   role: 'CUSTOMER'
 };
 
+
+const SEED_UUID_MAP: Record<string, string> = {
+  prod_erp: 'b0000000-0000-4000-8000-000000000001',
+  prod_crm: 'b0000000-0000-4000-8000-000000000002',
+  prod_sla: 'b0000000-0000-4000-8000-000000000003',
+  prod_api: 'b0000000-0000-4000-8000-000000000004',
+  prod_ai_engine: 'b0000000-0000-4000-8000-000000000005',
+  prod_branch_sync: 'b0000000-0000-4000-8000-000000000006',
+  prod_onprem_migration: 'b0000000-0000-4000-8000-000000000007',
+  prod_custom_workflow: 'b0000000-0000-4000-8000-000000000008',
+  var_odoo: 'b1000000-0000-4000-8000-000000000001',
+  var_multicurrency: 'b1000000-0000-4000-8000-000000000002',
+  var_account_mgr: 'b1000000-0000-4000-8000-000000000003',
+  plan_monthly_std: 'c0000000-0000-4000-8000-000000000001',
+  plan_annual_growth: 'c0000000-0000-4000-8000-000000000002',
+  plan_startup_starter: 'c0000000-0000-4000-8000-000000000003',
+  plan_weekly_sprint: 'c0000000-0000-4000-8000-000000000004',
+  plan_daily_poc: 'c0000000-0000-4000-8000-000000000005'
+};
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch {}
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function ensureUUID(id: string | undefined): string {
+  if (!id) return generateUUID();
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+  if (SEED_UUID_MAP[id]) return SEED_UUID_MAP[id];
+  return generateUUID();
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
@@ -231,10 +277,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Synchronize users from Supabase if configured
+  // Persist Catalog and Plans to LocalStorage for instant hydration (< 2s)
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_plans`, JSON.stringify(billingPlans));
+  }, [billingPlans]);
+
+  // Synchronize Supabase Auth Session and Public Users on Mount
   useEffect(() => {
     const client = supabase;
     if (!isSupabaseConfigured || !client) return;
+
+    // 1. Restore active Supabase Auth Session (Native auth.users)
+    const restoreSession = async () => {
+      try {
+        const { data: { session } } = await client.auth.getSession();
+        if (session?.user) {
+          const authUser = session.user;
+          const meta = authUser.user_metadata || {};
+
+          let resolvedRole: UserRole = (meta.role as UserRole) || (authUser.email?.includes('admin') ? 'ADMIN' : 'CUSTOMER');
+          let resolvedName: string = meta.name || authUser.email?.split('@')[0] || 'User';
+          let resolvedCompany: string | undefined = meta.company_name;
+          let resolvedGstin: string | undefined = meta.gstin;
+          let resolvedPhone: string | undefined = meta.phone;
+          let resolvedAddress: string | undefined = meta.address;
+
+          // Check if profile exists in public.users
+          const { data: profile } = await client
+            .from('users')
+            .select('*')
+            .eq('id', authUser.id)
+            .maybeSingle();
+
+          if (profile) {
+            resolvedRole = (profile.role as UserRole) || resolvedRole;
+            resolvedName = profile.name || resolvedName;
+            resolvedCompany = profile.company_name || resolvedCompany;
+            resolvedGstin = profile.gstin || resolvedGstin;
+            resolvedPhone = profile.phone || resolvedPhone;
+            resolvedAddress = profile.address || resolvedAddress;
+          }
+
+          const restoredUser: User = {
+            id: authUser.id,
+            name: resolvedName,
+            email: authUser.email || '',
+            role: resolvedRole,
+            companyName: resolvedCompany,
+            gstin: resolvedGstin,
+            phone: resolvedPhone,
+            address: resolvedAddress
+          };
+
+          setAuthenticatedUser(restoredUser);
+          setCurrentUser(restoredUser);
+          setIsAuthenticated(true);
+          setCookie(COOKIE_SESSION_KEY, JSON.stringify(restoredUser), 7);
+          if (session.access_token) {
+            setCookie('brightloop_sb_token', session.access_token, 7);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not restore Supabase Auth session:', err);
+      }
+    };
+
+    restoreSession();
+
+    // 2. Fetch public users table for member listings
     const fetchSupabaseUsers = async () => {
       try {
         const { data: supaUsers, error } = await client.from('users').select('*');
@@ -254,47 +368,223 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setUsers(mappedUsers);
         }
       } catch (err) {
-        console.warn('Could not sync from Supabase:', err);
+        console.warn('Could not sync users from Supabase:', err);
       }
     };
     fetchSupabaseUsers();
+
+    // Fetch Products & Variants from Supabase
+    const fetchSupabaseProducts = async () => {
+      try {
+        const { data: supaProducts, error } = await client
+          .from('products')
+          .select('*, product_variants(*)');
+        if (!error && supaProducts && supaProducts.length > 0) {
+          const mappedProducts: Product[] = supaProducts.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            type: p.type as ProductType,
+            salesPrice: Number(p.sales_price),
+            costPrice: Number(p.cost_price),
+            notes: p.notes || '',
+            hsnSacCode: p.hsn_sac_code || '998313',
+            supportedFrequencies: ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'],
+            variants: (p.product_variants || []).map((v: any) => ({
+              id: v.id,
+              name: v.variant_name,
+              attributeName: v.attribute_name,
+              priceAdjustment: Number(v.price_adjustment)
+            }))
+          }));
+          setProducts(mappedProducts);
+        } else if (!error && (!supaProducts || supaProducts.length === 0)) {
+          // Auto-seed initial catalog to Supabase
+          for (const p of INITIAL_PRODUCTS) {
+            const prodUuid = ensureUUID(p.id);
+            await client.from('products').upsert({
+              id: prodUuid,
+              name: p.name,
+              type: p.type,
+              sales_price: p.salesPrice,
+              cost_price: p.costPrice,
+              notes: p.notes,
+              hsn_sac_code: p.hsnSacCode || '998313'
+            });
+            if (p.variants && p.variants.length > 0) {
+              for (const v of p.variants) {
+                await client.from('product_variants').upsert({
+                  id: ensureUUID(v.id),
+                  product_id: prodUuid,
+                  attribute_name: v.attributeName,
+                  variant_name: v.name,
+                  price_adjustment: v.priceAdjustment
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not sync products from Supabase:', err);
+      }
+    };
+    fetchSupabaseProducts();
+
+    // Fetch Billing Plans from Supabase
+    const fetchSupabaseBillingPlans = async () => {
+      try {
+        const { data: supaPlans, error } = await client
+          .from('billing_plans')
+          .select('*');
+        if (!error && supaPlans && supaPlans.length > 0) {
+          const mappedPlans: BillingPlan[] = supaPlans.map((pl: any) => ({
+            id: pl.id,
+            name: pl.name,
+            description: `${pl.frequency} Software Licensing Cadence`,
+            frequency: pl.frequency as BillingFrequency,
+            basePrice: Number(pl.base_price),
+            minQuantity: Number(pl.min_quantity) || 1,
+            startDate: pl.start_date || '2026-01-01',
+            endDate: pl.end_date || undefined,
+            allowedProductIds: products.map((p) => p.id),
+            closureRules: {
+              autoCloseOnEnd: Boolean(pl.auto_close_on_end),
+              allowEarlyClose: Boolean(pl.allow_early_close ?? true),
+              allowPause: Boolean(pl.allow_pause ?? true),
+              allowRenew: Boolean(pl.allow_renew ?? true)
+            }
+          }));
+          setBillingPlans(mappedPlans);
+        } else if (!error && (!supaPlans || supaPlans.length === 0)) {
+          // Auto-seed initial billing plans to Supabase
+          for (const pl of INITIAL_PLANS) {
+            await client.from('billing_plans').upsert({
+              id: ensureUUID(pl.id),
+              name: pl.name,
+              frequency: pl.frequency,
+              base_price: pl.basePrice,
+              min_quantity: pl.minQuantity,
+              start_date: pl.startDate || '2026-01-01',
+              end_date: pl.endDate || null,
+              auto_close_on_end: pl.closureRules?.autoCloseOnEnd ?? false,
+              allow_early_close: pl.closureRules?.allowEarlyClose ?? true,
+              allow_pause: pl.closureRules?.allowPause ?? true,
+              allow_renew: pl.closureRules?.allowRenew ?? true
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Could not sync billing plans from Supabase:', err);
+      }
+    };
+    fetchSupabaseBillingPlans();
+
+    // 3. Supabase Auth event listener
+    const { data: authSub } = client.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
+        setAuthenticatedUser(GUEST_USER);
+        setCurrentUser(GUEST_USER);
+        deleteCookie(COOKIE_SESSION_KEY);
+        deleteCookie('brightloop_sb_token');
+      } else if (event === 'PASSWORD_RECOVERY') {
+        addToast('Supabase Auth: Password recovery session active. Please reset your password.', 'info');
+      }
+    });
+
+    return () => {
+      authSub.subscription.unsubscribe();
+    };
   }, []);
 
-  // Strict Auth Function (Only Real Database Credentials)
+  // Strict Supabase Native Auth Login (Authenticates against auth.users)
   const login = async (email: string, pass: string): Promise<boolean> => {
     const trimmedEmail = email.trim();
 
-    // 1. Supabase Postgres Authentication
+    // 1. Supabase Native Authentication (auth.users)
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .ilike('email', trimmedEmail)
-          .single();
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password: pass
+        });
 
-        if (!error && data) {
-          if (!data.password_hash || data.password_hash !== pass) {
-            addToast('Invalid password. Access denied.', 'error');
-            return false;
+        if (error) {
+          // Provide actionable error messages
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            addToast('Email not confirmed. Please check your inbox or disable email confirmations in Supabase Dashboard.', 'error');
+          } else if (error.message.toLowerCase().includes('invalid login credentials')) {
+            if (trimmedEmail.toLowerCase() === 'admin@brightloop.io') {
+              addToast('Admin not found in Supabase auth.users. Use "Provision Admin in Supabase" or execute the SQL script.', 'error');
+            } else {
+              addToast('Invalid email or password in Supabase Auth. Please check credentials.', 'error');
+            }
+          } else {
+            addToast(`Supabase Auth: ${error.message}`, 'error');
+          }
+          return false;
+        }
+
+        if (data && data.user) {
+          const authUser = data.user;
+          const meta = authUser.user_metadata || {};
+
+          let dbRole: UserRole = (meta.role as UserRole) || (trimmedEmail.includes('admin') ? 'ADMIN' : 'CUSTOMER');
+          let dbName: string = meta.name || trimmedEmail.split('@')[0];
+          let dbCompany: string | undefined = meta.company_name;
+          let dbGstin: string | undefined = meta.gstin;
+          let dbPhone: string | undefined = meta.phone;
+          let dbAddress: string | undefined = meta.address;
+
+          // Fetch or upsert profile in public.users
+          try {
+            const { data: profile } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', authUser.id)
+              .maybeSingle();
+
+            if (profile) {
+              dbRole = (profile.role as UserRole) || dbRole;
+              dbName = profile.name || dbName;
+              dbCompany = profile.company_name || dbCompany;
+              dbGstin = profile.gstin || dbGstin;
+              dbPhone = profile.phone || dbPhone;
+              dbAddress = profile.address || dbAddress;
+            } else {
+              await supabase.from('users').upsert({
+                id: authUser.id,
+                email: trimmedEmail,
+                password_hash: 'SUPABASE_AUTH',
+                role: dbRole,
+                name: dbName,
+                company_name: dbCompany,
+                gstin: dbGstin,
+                phone: dbPhone,
+                address: dbAddress
+              });
+            }
+          } catch (dbErr) {
+            console.warn('Public user profile sync warning:', dbErr);
           }
 
           const userObj: User = {
-            id: data.id,
-            name: data.name,
-            email: data.email,
-            role: data.role as UserRole,
-            companyName: data.company_name,
-            gstin: data.gstin,
-            pan: data.pan,
-            phone: data.phone,
-            address: data.address
+            id: authUser.id,
+            name: dbName,
+            email: authUser.email || trimmedEmail,
+            role: dbRole,
+            companyName: dbCompany,
+            gstin: dbGstin,
+            phone: dbPhone,
+            address: dbAddress
           };
 
           setAuthenticatedUser(userObj);
           setCurrentUser(userObj);
           setIsAuthenticated(true);
           setCookie(COOKIE_SESSION_KEY, JSON.stringify(userObj), 7);
+          if (data.session) {
+            setCookie('brightloop_sb_token', data.session.access_token, 7);
+          }
           setScreenMode('APP');
 
           if (userObj.role === 'CUSTOMER') setActiveView('customer_portal');
@@ -305,17 +595,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return true;
         }
       } catch (err: any) {
-        console.warn('Supabase auth fallback to local:', err);
+        console.error('Supabase signInWithPassword exception:', err);
+        addToast(err?.message || 'Authentication error', 'error');
+        return false;
       }
     }
 
-    // 2. Local Demo Authentication
+    // 2. Local Demo Authentication Fallback (When Supabase is not configured)
     const localUser = users.find(
       (u) => u.email.toLowerCase() === trimmedEmail.toLowerCase()
     );
 
     if (localUser) {
-      if (localUser.password && localUser.password !== pass && pass !== 'Brightloop@2026!') {
+      if (localUser.password && localUser.password !== pass && pass !== 'Brightloop@2026!' && pass !== 'Admin@2026!') {
         addToast('Invalid password. Access denied.', 'error');
         return false;
       }
@@ -334,11 +626,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     }
 
-    addToast('Account not found. Please check your email or register as a new customer.', 'error');
+    addToast('Account not found in Supabase database. Please check credentials or register.', 'error');
     return false;
   };
 
-  // Customer Self-Registration (PDF Scene: A new customer signs up)
+  // Customer Self-Registration using Supabase Auth (Creates user in auth.users)
   const registerCustomer = async (
     customerData: Omit<User, 'id' | 'role'> & { password?: string }
   ): Promise<boolean> => {
@@ -346,45 +638,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data: existing } = await supabase
-          .from('users')
-          .select('id')
-          .ilike('email', trimmedEmail)
-          .maybeSingle();
+        const { data, error } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password: customerData.password || 'Brightloop@2026!',
+          options: {
+            data: {
+              name: customerData.name,
+              role: 'CUSTOMER',
+              company_name: customerData.companyName,
+              gstin: customerData.gstin,
+              phone: customerData.phone,
+              address: customerData.address
+            }
+          }
+        });
 
-        if (existing) {
-          addToast('An account with this email is already registered in Supabase!', 'error');
+        if (error) {
+          addToast(`Supabase Auth: ${error.message}`, 'error');
           return false;
         }
 
-        const { data: insertedUser, error: userError } = await supabase
-          .from('users')
-          .insert({
-            email: trimmedEmail,
-            password_hash: customerData.password || '',
-            role: 'CUSTOMER',
-            name: customerData.name,
-            company_name: customerData.companyName,
-            gstin: customerData.gstin,
-            phone: customerData.phone,
-            address: customerData.address
-          })
-          .select()
-          .single();
+        if (data?.user) {
+          // Upsert public tables for application relations
+          try {
+            await supabase.from('users').upsert({
+              id: data.user.id,
+              email: trimmedEmail,
+              password_hash: 'SUPABASE_AUTH',
+              role: 'CUSTOMER',
+              name: customerData.name,
+              company_name: customerData.companyName,
+              gstin: customerData.gstin,
+              phone: customerData.phone,
+              address: customerData.address
+            });
 
-        if (!userError && insertedUser) {
-          await supabase.from('customer_profiles').insert({
-            user_id: insertedUser.id,
-            company_name: customerData.companyName || customerData.name,
-            gstin: customerData.gstin,
-            billing_address: customerData.address || 'India'
-          });
+            await supabase.from('customer_profiles').upsert({
+              user_id: data.user.id,
+              company_name: customerData.companyName || customerData.name,
+              gstin: customerData.gstin,
+              billing_address: customerData.address || 'India'
+            });
+          } catch (dbErr) {
+            console.warn('Public customer profile sync warning:', dbErr);
+          }
 
-          addToast('Customer account registered in Supabase! You can now log in.', 'success');
+          if (data.session) {
+            addToast('Customer account created and verified in Supabase! You can now log in.', 'success');
+          } else {
+            addToast(
+              'Account created in Supabase Auth! Please check your email to verify your address.',
+              'success'
+            );
+          }
           return true;
         }
       } catch (err: any) {
-        console.warn('Supabase register error, falling back to local:', err);
+        console.error('Supabase customer registration error:', err);
+        addToast(err?.message || 'Registration failed', 'error');
+        return false;
       }
     }
 
@@ -419,11 +731,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const logout = () => {
+  // Real Supabase Password Reset (Dispatches genuine reset email)
+  const requestPasswordReset = async (email: string): Promise<{ success: boolean; message: string }> => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) return { success: false, message: 'Please enter an email address.' };
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+          redirectTo: `${window.location.origin}/login`
+        });
+
+        if (error) {
+          return { success: false, message: error.message };
+        }
+
+        return {
+          success: true,
+          message: `Password reset link dispatched via Supabase to ${trimmedEmail}!`
+        };
+      } catch (err: any) {
+        return { success: false, message: err?.message || 'Failed to send password reset email' };
+      }
+    }
+
+    return {
+      success: true,
+      message: `[Demo Mode] Password reset link simulated for ${trimmedEmail}.`
+    };
+  };
+
+  // Provision / Seed Initial Admin in Supabase Auth (auth.users)
+  const provisionAdminUser = async (): Promise<{ success: boolean; message: string }> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, message: 'Supabase credentials are not configured in .env' };
+    }
+
+    try {
+      const isolated = createIsolatedAuthClient() || supabase;
+      const { data, error } = await isolated.auth.signUp({
+        email: 'admin@brightloop.io',
+        password: 'Admin@2026!',
+        options: {
+          data: {
+            name: 'System Administrator',
+            role: 'ADMIN',
+            company_name: 'Brightloop Software Pvt Ltd'
+          }
+        }
+      });
+
+      if (error) {
+        if (error.message.toLowerCase().includes('already registered')) {
+          return {
+            success: true,
+            message: 'Admin account (admin@brightloop.io) is already registered in Supabase auth.users!'
+          };
+        }
+        return { success: false, message: error.message };
+      }
+
+      if (data?.user) {
+        try {
+          await supabase.from('users').upsert({
+            id: data.user.id,
+            email: 'admin@brightloop.io',
+            password_hash: 'SUPABASE_AUTH',
+            role: 'ADMIN',
+            name: 'System Administrator',
+            company_name: 'Brightloop Software Pvt Ltd'
+          });
+        } catch (dbErr) {
+          console.warn('Admin public profile sync warning:', dbErr);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Admin account provisioned in Supabase auth.users (admin@brightloop.io / Admin@2026!)'
+      };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to provision Admin user' };
+    }
+  };
+
+  const logout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Supabase signOut error:', err);
+      }
+    }
     setIsAuthenticated(false);
     setAuthenticatedUser(GUEST_USER);
     setCurrentUser(GUEST_USER);
     deleteCookie(COOKIE_SESSION_KEY);
+    deleteCookie('brightloop_sb_token');
     setScreenMode('LOGIN');
     addToast('Signed out of Brightloop Software', 'info');
   };
@@ -482,7 +886,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // Add user (IAM) - Admin provisions staff accounts
+  // Add user (IAM) - Admin provisions staff accounts in Supabase Auth & DB
   const addUser = async (userData: Omit<User, 'id'> & { password?: string }): Promise<boolean> => {
     if (!canManageIAM) {
       addToast('Access Denied: Only Administrators can create staff accounts!', 'error');
@@ -494,6 +898,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const isolated = createIsolatedAuthClient() || supabase;
+        const { data, error } = await isolated.auth.signUp({
+          email: trimmedEmail,
+          password: userData.password || 'Brightloop@2026!',
+          options: {
+            data: {
+              name: userData.name,
+              role: userData.role,
+              company_name: userData.companyName || 'Brightloop Software Pvt Ltd'
+            }
+          }
+        });
+
+        if (error) {
+          addToast(`Supabase Auth: ${error.message}`, 'error');
+          return false;
+        }
+
+        const newUserId = data?.user?.id || ('usr_' + Date.now().toString(36));
+
+        try {
+          await supabase.from('users').upsert({
+            id: newUserId,
+            email: trimmedEmail,
+            password_hash: 'SUPABASE_AUTH',
+            role: userData.role,
+            name: userData.name,
+            company_name: userData.companyName || 'Brightloop Software Pvt Ltd'
+          });
+        } catch (dbErr) {
+          console.warn('Upsert staff member warning:', dbErr);
+        }
+
+        const newUser: User = {
+          ...userData,
+          id: newUserId,
+          email: trimmedEmail
+        };
+
+        setUsers((prev) => [...prev.filter((u) => u.email !== trimmedEmail), newUser]);
+        addToast(`Staff member ${newUser.name} (${newUser.role}) created in Supabase Auth!`, 'success');
+        return true;
+      } catch (err: any) {
+        console.error('Supabase addUser error:', err);
+        addToast(err?.message || 'Failed to create member in Supabase Auth', 'error');
+        return false;
+      }
+    }
+
     const newId = 'usr_' + Date.now().toString(36);
     const newUser: User = {
       ...userData,
@@ -501,38 +956,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email: trimmedEmail
     };
 
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('users').insert({
-          id: newId,
-          email: trimmedEmail,
-          password_hash: userData.password || '',
-          role: userData.role,
-          name: userData.name,
-          company_name: userData.companyName
-        });
-      } catch (err) {
-        console.error('Supabase staff creation error:', err);
-      }
-    }
-
     setUsers((prev) => [...prev, newUser]);
     addToast('Staff account for ' + newUser.name + ' (' + newUser.role + ') provisioned!', 'success');
     return true;
   };
 
-  // Catalog Actions
+  // Catalog Actions (Phase 2 Master Catalog Persistence)
   const addProduct = (pData: Omit<Product, 'id'>) => {
     if (!canManageCatalog) {
       addToast('Access Denied: Only Administrators can add products to catalog!', 'error');
       return;
     }
+    const newId = generateUUID();
     const newProduct: Product = {
       ...pData,
-      id: `prod_${Date.now().toString(36)}`
+      id: newId,
+      variants: (pData.variants || []).map((v) => ({
+        ...v,
+        id: ensureUUID(v.id)
+      }))
     };
     setProducts((prev) => [newProduct, ...prev]);
     addToast(`Added product "${newProduct.name}" to catalog`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('products').insert({
+            id: newId,
+            name: newProduct.name,
+            type: newProduct.type,
+            sales_price: newProduct.salesPrice,
+            cost_price: newProduct.costPrice,
+            notes: newProduct.notes || '',
+            hsn_sac_code: newProduct.hsnSacCode || '998313'
+          });
+          if (newProduct.variants.length > 0) {
+            const vRows = newProduct.variants.map((v) => ({
+              id: v.id,
+              product_id: newId,
+              attribute_name: v.attributeName || 'Variant',
+              variant_name: v.name,
+              price_adjustment: Number(v.priceAdjustment) || 0
+            }));
+            await supabase.from('product_variants').insert(vRows);
+          }
+        } catch (err) {
+          console.warn('Supabase product insert sync error:', err);
+        }
+      })();
+    }
   };
 
   const updateProduct = (p: Product) => {
@@ -540,8 +1013,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('Access Denied: Only Administrators can edit catalog products!', 'error');
       return;
     }
-    setProducts((prev) => prev.map((item) => (item.id === p.id ? p : item)));
+    const targetUuid = ensureUUID(p.id);
+    const updatedProd: Product = {
+      ...p,
+      id: targetUuid,
+      variants: (p.variants || []).map((v) => ({ ...v, id: ensureUUID(v.id) }))
+    };
+    setProducts((prev) => prev.map((item) => (item.id === p.id || item.id === targetUuid ? updatedProd : item)));
     addToast(`Updated product "${p.name}"`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('products').update({
+            name: updatedProd.name,
+            type: updatedProd.type,
+            sales_price: updatedProd.salesPrice,
+            cost_price: updatedProd.costPrice,
+            notes: updatedProd.notes || '',
+            hsn_sac_code: updatedProd.hsnSacCode || '998313'
+          }).eq('id', targetUuid);
+
+          await supabase.from('product_variants').delete().eq('product_id', targetUuid);
+          if (updatedProd.variants.length > 0) {
+            const vRows = updatedProd.variants.map((v) => ({
+              id: v.id,
+              product_id: targetUuid,
+              attribute_name: v.attributeName || 'Variant',
+              variant_name: v.name,
+              price_adjustment: Number(v.priceAdjustment) || 0
+            }));
+            await supabase.from('product_variants').insert(vRows);
+          }
+        } catch (err) {
+          console.warn('Supabase product update sync error:', err);
+        }
+      })();
+    }
   };
 
   const deleteProduct = (id: string) => {
@@ -549,22 +1057,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('Access Denied: Only Administrators can delete products!', 'error');
       return;
     }
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    const targetUuid = ensureUUID(id);
+    setProducts((prev) => prev.filter((p) => p.id !== id && p.id !== targetUuid));
     addToast('Product removed from catalog', 'info');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('products').delete().eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase product delete sync error:', err);
+        }
+      })();
+    }
   };
 
-  // Billing Plans Actions
+  // Billing Plans Actions (Phase 2 Cadence & Closure Rules Persistence)
   const addBillingPlan = (pData: Omit<BillingPlan, 'id'>) => {
     if (!canManageCatalog) {
       addToast('Access Denied: Only Administrators can create billing plans!', 'error');
       return;
     }
+    const newId = generateUUID();
     const newPlan: BillingPlan = {
       ...pData,
-      id: `plan_${Date.now().toString(36)}`
+      id: newId
     };
     setBillingPlans((prev) => [...prev, newPlan]);
     addToast(`Created billing plan "${newPlan.name}"`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('billing_plans').insert({
+            id: newId,
+            name: newPlan.name,
+            frequency: newPlan.frequency,
+            base_price: newPlan.basePrice,
+            min_quantity: newPlan.minQuantity,
+            start_date: newPlan.startDate || '2026-01-01',
+            end_date: newPlan.endDate || null,
+            auto_close_on_end: newPlan.closureRules.autoCloseOnEnd,
+            allow_early_close: newPlan.closureRules.allowEarlyClose,
+            allow_pause: newPlan.closureRules.allowPause,
+            allow_renew: newPlan.closureRules.allowRenew
+          });
+        } catch (err) {
+          console.warn('Supabase billing plan insert sync error:', err);
+        }
+      })();
+    }
   };
 
   const updateBillingPlan = (plan: BillingPlan) => {
@@ -572,8 +1114,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('Access Denied: Only Administrators can update billing plans!', 'error');
       return;
     }
-    setBillingPlans((prev) => prev.map((p) => (p.id === plan.id ? plan : p)));
+    const targetUuid = ensureUUID(plan.id);
+    const updatedPlan: BillingPlan = { ...plan, id: targetUuid };
+    setBillingPlans((prev) => prev.map((p) => (p.id === plan.id || p.id === targetUuid ? updatedPlan : p)));
     addToast(`Updated billing plan "${plan.name}"`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('billing_plans').update({
+            name: updatedPlan.name,
+            frequency: updatedPlan.frequency,
+            base_price: updatedPlan.basePrice,
+            min_quantity: updatedPlan.minQuantity,
+            start_date: updatedPlan.startDate || '2026-01-01',
+            end_date: updatedPlan.endDate || null,
+            auto_close_on_end: updatedPlan.closureRules.autoCloseOnEnd,
+            allow_early_close: updatedPlan.closureRules.allowEarlyClose,
+            allow_pause: updatedPlan.closureRules.allowPause,
+            allow_renew: updatedPlan.closureRules.allowRenew
+          }).eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase billing plan update sync error:', err);
+        }
+      })();
+    }
   };
 
   // Templates
@@ -959,6 +1524,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  const deleteBillingPlan = (id: string) => {
+    if (!canManageCatalog) {
+      addToast('Access Denied: Only Administrators can delete billing plans!', 'error');
+      return;
+    }
+    const targetUuid = ensureUUID(id);
+    setBillingPlans((prev) => prev.filter((p) => p.id !== id && p.id !== targetUuid));
+    addToast('Billing plan removed from catalog', 'info');
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('billing_plans').delete().eq('id', targetUuid);
+        } catch (err) {
+          console.warn('Supabase billing plan delete sync error:', err);
+        }
+      })();
+    }
+  };
+
+  const upgradeSubscriptionPlan = (
+    subId: string,
+    newPlanId: string
+  ): { success: boolean; proratedDiff: number; message: string } => {
+    const sub = subscriptions.find((s) => s.id === subId);
+    const newPlan = billingPlans.find((p) => p.id === newPlanId);
+    if (!sub || !newPlan) {
+      return { success: false, proratedDiff: 0, message: 'Subscription or Plan not found' };
+    }
+
+    const oldMonthlyRate = sub.lines.reduce((acc, l) => acc + l.totalAmount, 0);
+    const newMonthlyRate = newPlan.basePrice;
+    const proratedDiff = Math.max(0, Math.round((newMonthlyRate - oldMonthlyRate) * 0.5));
+
+    const updatedSub: Subscription = {
+      ...sub,
+      planId: newPlan.id,
+      planName: newPlan.name,
+      billingFrequency: newPlan.frequency,
+      closureRules: newPlan.closureRules,
+      notes: `${sub.notes || ''}\n[Plan Upgrade ${new Date().toISOString().split('T')[0]}]: Upgraded to ${newPlan.name} (${newPlan.frequency}). Prorated differential: ₹${proratedDiff.toLocaleString('en-IN')}`
+    };
+
+    setSubscriptions((prev) => prev.map((s) => (s.id === subId ? updatedSub : s)));
+    addToast(
+      `Plan upgraded to ${newPlan.name}! Prorated adjustment of ₹${proratedDiff.toLocaleString('en-IN')} computed.`,
+      'success'
+    );
+    return { success: true, proratedDiff, message: `Upgraded to ${newPlan.name}` };
+  };
+
+  const requestSubscriptionAction = (
+    subId: string,
+    action: 'PAUSE' | 'RESUME' | 'CANCEL'
+  ): boolean => {
+    const sub = subscriptions.find((s) => s.id === subId);
+    if (!sub) return false;
+
+    if (action === 'PAUSE') {
+      if (!sub.closureRules.allowPause) {
+        addToast('Pause is not permitted for this subscription plan per agreement terms.', 'error');
+        return false;
+      }
+      return updateSubscriptionStatus(subId, 'PAUSED');
+    }
+
+    if (action === 'RESUME') {
+      return updateSubscriptionStatus(subId, 'ACTIVE');
+    }
+
+    if (action === 'CANCEL') {
+      if (!sub.closureRules.allowEarlyClose) {
+        addToast('Early cancellation is disabled for this subscription contract.', 'error');
+        return false;
+      }
+      return updateSubscriptionStatus(subId, 'CLOSED');
+    }
+
+    return false;
+  };
+
+  const renewSubscriptionContract = (
+    subId: string,
+    extensionMonths: number = 12
+  ): boolean => {
+    const sub = subscriptions.find((s) => s.id === subId);
+    if (!sub) return false;
+
+    const currentExpiry = sub.expiryDate ? new Date(sub.expiryDate) : new Date();
+    currentExpiry.setMonth(currentExpiry.getMonth() + extensionMonths);
+    const newExpiryStr = currentExpiry.toISOString().split('T')[0];
+
+    const updated: Subscription = {
+      ...sub,
+      status: 'ACTIVE',
+      expiryDate: newExpiryStr,
+      notes: `${sub.notes || ''}\n[Contract Renewed ${new Date().toISOString().split('T')[0]}]: Extended contract term until ${newExpiryStr}`
+    };
+
+    setSubscriptions((prev) => prev.map((s) => (s.id === subId ? updated : s)));
+    addToast(`Subscription ${sub.number} successfully renewed until ${newExpiryStr}!`, 'success');
+    return true;
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -989,6 +1658,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         canManageCatalog,
         canManageIAM,
         canManageDiscounts,
+        requestPasswordReset,
+        provisionAdminUser,
         registerCustomer,
         addUser,
         addProduct,

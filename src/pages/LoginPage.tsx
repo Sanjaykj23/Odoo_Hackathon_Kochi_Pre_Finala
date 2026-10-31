@@ -9,15 +9,13 @@ import {
   EyeOff,
   ArrowRight,
   Database,
-  KeyRound,
   Home,
   CheckCircle2,
-  UserPlus,
-  ShieldCheck
+  Loader2
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, isAuthenticated, authenticatedUser, users } = useApp();
+  const { login, isAuthenticated, authenticatedUser, requestPasswordReset } = useApp();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -29,6 +27,8 @@ export const LoginPage: React.FC = () => {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState('');
 
   // If already logged in, redirect to their role dashboard
   React.useEffect(() => {
@@ -44,16 +44,8 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     if (!email || !password) return;
     setLoading(true);
-    const success = await login(email.trim(), password);
+    await login(email.trim(), password);
     setLoading(false);
-    if (success) {
-      // AppContext sets view & authenticatedUser, redirect occurs via useEffect
-    }
-  };
-
-  const handleQuickLogin = (userEmail: string) => {
-    setEmail(userEmail);
-    setPassword('Brightloop@2026!');
   };
 
   return (
@@ -91,7 +83,7 @@ export const LoginPage: React.FC = () => {
             }`}
           >
             <Database className="w-3.5 h-3.5 text-[#55C9A2]" />
-            <span>{isSupabaseConfigured ? 'Supabase Postgres Live' : 'Supabase (Awaiting .env Keys)'}</span>
+            <span>{isSupabaseConfigured ? 'Supabase Auth & DB Live' : 'Supabase (Awaiting .env Keys)'}</span>
           </div>
 
           <Link
@@ -115,7 +107,7 @@ export const LoginPage: React.FC = () => {
               Welcome to Brightloop
             </h1>
             <p className="text-xs text-[#697386] mt-1">
-              Enter your credentials to access your authorized role dashboard.
+              Enter your corporate credentials to access your authorized role dashboard.
             </p>
           </div>
 
@@ -146,8 +138,9 @@ export const LoginPage: React.FC = () => {
                     setResetModalOpen(true);
                     setResetSent(false);
                     setResetEmail(email);
+                    setResetFeedback('');
                   }}
-                  className="text-[#6254E8] hover:underline text-[11px] font-medium"
+                  className="text-[#6254E8] hover:underline text-[11px] font-medium cursor-pointer"
                 >
                   Forgot password?
                 </button>
@@ -177,52 +170,10 @@ export const LoginPage: React.FC = () => {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-[#6254E8] hover:bg-[#5244d4] disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-[#6254E8]/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>{loading ? 'Authenticating with Supabase...' : 'Sign In'}</span>
+              <span>{loading ? 'Authenticating with Supabase Auth...' : 'Sign In'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Login Presets for Hackathon Judges & Demos */}
-          <div className="p-3.5 rounded-2xl card-lavender border border-[#E3E8EE] text-[11px] space-y-2">
-            <div className="font-semibold text-[#252735] flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-[#6254E8]" />
-              <span>Quick Login Presets (Click to autofill):</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@brightloop.io')}
-                className="p-2 rounded-xl bg-white hover:bg-[#F0EDFA] border border-[#E3E8EE] text-left transition-all"
-              >
-                <div className="font-bold text-[#6254E8]">Administrator</div>
-                <div className="text-[10px] text-[#697386] truncate">admin@brightloop.io</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('finance@brightloop.io')}
-                className="p-2 rounded-xl bg-white hover:bg-[#E1F3EB] border border-[#E3E8EE] text-left transition-all"
-              >
-                <div className="font-bold text-[#55C9A2]">Finance Lead</div>
-                <div className="text-[10px] text-[#697386] truncate">finance@brightloop.io</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('sales@brightloop.io')}
-                className="p-2 rounded-xl bg-white hover:bg-[#E5F0FA] border border-[#E3E8EE] text-left transition-all"
-              >
-                <div className="font-bold text-[#7A8CE8]">Sales Staff</div>
-                <div className="text-[10px] text-[#697386] truncate">sales@brightloop.io</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('billing@infosys.com')}
-                className="p-2 rounded-xl bg-white hover:bg-[#F0EDFA] border border-[#E3E8EE] text-left transition-all"
-              >
-                <div className="font-bold text-[#292A3A]">Customer Client</div>
-                <div className="text-[10px] text-[#697386] truncate">billing@infosys.com</div>
-              </button>
-            </div>
-          </div>
 
           {/* Link to Register */}
           <div className="pt-4 border-t border-[#E3E8EE] text-center">
@@ -243,11 +194,11 @@ export const LoginPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#252735] flex items-center gap-2">
                 <Mail className="w-4 h-4 text-[#6254E8]" />
-                <span>Reset Account Password</span>
+                <span>Reset Account Password via Supabase</span>
               </h3>
               <button
                 onClick={() => setResetModalOpen(false)}
-                className="text-[#9299A8] hover:text-[#252735] text-xs font-bold"
+                className="text-[#9299A8] hover:text-[#252735] text-xs font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -257,10 +208,10 @@ export const LoginPage: React.FC = () => {
               <div className="p-4 rounded-2xl card-mint border border-[#55C9A2]/40 text-xs text-[#252735] space-y-2">
                 <div className="font-semibold flex items-center gap-1.5 text-[#55C9A2]">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Password Reset Link Dispatched</span>
+                  <span>Password Reset Dispatched!</span>
                 </div>
-                <p className="text-[#697386]">
-                  A password reset link has been dispatched to <strong>{resetEmail}</strong>.
+                <p className="text-[#697386] leading-relaxed">
+                  {resetFeedback || `A password reset link was dispatched via Supabase Auth to ${resetEmail}. Please check your email inbox and spam folder.`}
                 </p>
                 <button
                   type="button"
@@ -272,18 +223,27 @@ export const LoginPage: React.FC = () => {
               </div>
             ) : (
               <form
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
-                  setResetSent(true);
+                  if (!resetEmail) return;
+                  setResetLoading(true);
+                  const res = await requestPasswordReset(resetEmail);
+                  setResetLoading(false);
+                  if (res.success) {
+                    setResetSent(true);
+                    setResetFeedback(res.message);
+                  } else {
+                    alert(`Reset Failed: ${res.message}`);
+                  }
                 }}
                 className="space-y-3 text-xs"
               >
                 <p className="text-[#697386] text-[11px] leading-relaxed">
-                  Enter your registered corporate email. A password recovery link will arrive at your address.
+                  Enter your registered corporate email. Supabase Auth will generate a secure recovery token and email a password reset link to you.
                 </p>
                 <div>
                   <label className="block font-semibold text-[#252735] mb-1">
-                    Registered Email
+                    Registered Corporate Email
                   </label>
                   <input
                     type="email"
@@ -304,9 +264,11 @@ export const LoginPage: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl bg-[#6254E8] hover:bg-[#5244d4] text-white text-xs font-bold shadow-md shadow-[#6254E8]/20 cursor-pointer"
+                    disabled={resetLoading}
+                    className="px-4 py-2 rounded-xl bg-[#6254E8] hover:bg-[#5244d4] disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-[#6254E8]/20 cursor-pointer flex items-center gap-1.5"
                   >
-                    Send Reset Link
+                    {resetLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{resetLoading ? 'Dispatching...' : 'Send Reset Link'}</span>
                   </button>
                 </div>
               </form>

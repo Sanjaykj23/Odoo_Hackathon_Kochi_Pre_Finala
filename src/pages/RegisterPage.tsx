@@ -289,7 +289,7 @@ export const RegisterPage: React.FC = () => {
               disabled={loading || !isPasswordValid}
               className="w-full py-3 rounded-xl bg-[#55C9A2] hover:bg-[#45b791] disabled:opacity-40 text-white font-bold text-xs shadow-md shadow-[#55C9A2]/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>{loading ? 'Registering with Supabase...' : 'Create Customer Account'}</span>
+              <span>{loading ? 'Registering with Supabase Auth...' : 'Create Customer Account'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>

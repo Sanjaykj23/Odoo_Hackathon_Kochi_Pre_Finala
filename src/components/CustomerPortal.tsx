@@ -17,7 +17,17 @@ import {
   Lock,
   ChevronDown,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  CreditCard,
+  Zap,
+  Play,
+  Pause,
+  XCircle,
+  RefreshCw,
+  QrCode,
+  Check,
+  Loader2,
+  IndianRupee
 } from 'lucide-react';
 
 export const CustomerPortal: React.FC = () => {
@@ -27,12 +37,28 @@ export const CustomerPortal: React.FC = () => {
     setCurrentUser,
     subscriptions,
     invoices,
+    billingPlans,
+    recordPayment,
+    upgradeSubscriptionPlan,
+    requestSubscriptionAction,
+    renewSubscriptionContract,
     acceptQuotationAndActivate,
     negotiateQuotation
   } = useApp();
 
   const [negotiateSubId, setNegotiateSubId] = useState<string | null>(null);
   const [feedbackNotes, setFeedbackNotes] = useState('');
+
+  // Razorpay Gateway Simulation State
+  const [razorpayInvoice, setRazorpayInvoice] = useState<any | null>(null);
+  const [razorpayMethod, setRazorpayMethod] = useState<'UPI' | 'NET_BANKING' | 'CREDIT_CARD'>('UPI');
+  const [razorpayUpiId, setRazorpayUpiId] = useState('billing@okhdfcbank');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentSuccessRef, setPaymentSuccessRef] = useState<string | null>(null);
+
+  // Plan Upgrade Modal State
+  const [upgradeSub, setUpgradeSub] = useState<any | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
 
   // Get all customer user accounts
   const customerAccounts = users.filter((u) => u.role === 'CUSTOMER');
@@ -61,6 +87,42 @@ export const CustomerPortal: React.FC = () => {
       mySubscriptions.some((s) => s.id === i.subscriptionId) ||
       i.customerName.toLowerCase().includes(activeCustomerUser.name.toLowerCase())
   );
+
+  const handleOpenRazorpayModal = (inv: any) => {
+    setRazorpayInvoice(inv);
+    setPaymentSuccessRef(null);
+    setIsProcessingPayment(false);
+  };
+
+  const handleExecuteRazorpayPayment = () => {
+    if (!razorpayInvoice) return;
+    setIsProcessingPayment(true);
+
+    setTimeout(() => {
+      const txRef = `rzp_live_${Date.now().toString(36).toUpperCase()}`;
+      recordPayment({
+        invoiceId: razorpayInvoice.id,
+        amount: razorpayInvoice.balanceDue,
+        method: razorpayMethod,
+        transactionRef: txRef,
+        notes: `Instant checkout via Razorpay Gateway (${razorpayMethod})`
+      });
+
+      setIsProcessingPayment(false);
+      setPaymentSuccessRef(txRef);
+    }, 1200);
+  };
+
+  const handleOpenUpgradeModal = (sub: any) => {
+    setUpgradeSub(sub);
+    setSelectedPlanId(billingPlans[0]?.id || '');
+  };
+
+  const handleExecutePlanUpgrade = () => {
+    if (!upgradeSub || !selectedPlanId) return;
+    upgradeSubscriptionPlan(upgradeSub.id, selectedPlanId);
+    setUpgradeSub(null);
+  };
 
   const handleNegotiateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,6 +338,65 @@ export const CustomerPortal: React.FC = () => {
                       {sub.nextBillingDate}
                     </span>
                   </div>
+
+                  {/* Customer Self-Service Lifecycle Controls */}
+                  <div className="pt-2.5 border-t border-[#E3E8EE]/70 flex flex-wrap items-center gap-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUpgradeModal(sub)}
+                      className="px-2.5 py-1 rounded-xl bg-[#F0EDFA] hover:bg-[#E3DCF7] text-[#6254E8] font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <Zap className="w-3 h-3 text-[#6254E8]" />
+                      <span>Upgrade Plan</span>
+                    </button>
+
+                    {sub.status === 'ACTIVE' && sub.closureRules.allowPause && (
+                      <button
+                        type="button"
+                        onClick={() => requestSubscriptionAction(sub.id, 'PAUSE')}
+                        className="px-2.5 py-1 rounded-xl border border-[#FFE1D1] bg-[#FFF1E8] hover:bg-[#FFE1D1] text-[#B86221] font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Pause className="w-3 h-3" />
+                        <span>Pause</span>
+                      </button>
+                    )}
+
+                    {sub.status === 'PAUSED' && (
+                      <button
+                        type="button"
+                        onClick={() => requestSubscriptionAction(sub.id, 'RESUME')}
+                        className="px-2.5 py-1 rounded-xl border border-[#CEEBDD] bg-[#E1F3EB] hover:bg-[#CEEBDD] text-[#2E7D5D] font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Play className="w-3 h-3" />
+                        <span>Resume</span>
+                      </button>
+                    )}
+
+                    {sub.closureRules.allowRenew && (
+                      <button
+                        type="button"
+                        onClick={() => renewSubscriptionContract(sub.id, 12)}
+                        className="px-2.5 py-1 rounded-xl border border-[#DCE5ED] bg-white hover:bg-[#EAF3F8] text-[#252735] font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3 text-[#6254E8]" />
+                        <span>Renew (1 Yr)</span>
+                      </button>
+                    )}
+
+                    {sub.closureRules.allowEarlyClose && sub.status !== 'CLOSED' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to cancel subscription ${sub.number}?`)) {
+                            requestSubscriptionAction(sub.id, 'CANCEL');
+                          }
+                        }}
+                        className="px-2 py-1 rounded-xl text-[#9299A8] hover:text-[#D34545] hover:bg-[#FFEBEB] text-[11px] transition-all cursor-pointer ml-auto"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })
@@ -300,6 +421,7 @@ export const CustomerPortal: React.FC = () => {
                 <th className="py-3.5 px-5 text-right">Total Payable</th>
                 <th className="py-3.5 px-5 text-right">Balance Due</th>
                 <th className="py-3.5 px-5">Status</th>
+                <th className="py-3.5 px-5 text-right">Payment Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E3E8EE]/70">
@@ -331,6 +453,23 @@ export const CustomerPortal: React.FC = () => {
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#E1F3EB] text-[#2E7D5D] border border-[#CEEBDD]">
                         {inv.status}
                       </span>
+                    </td>
+                    <td className="py-3.5 px-5 text-right">
+                      {inv.balanceDue > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRazorpayModal(inv)}
+                          className="px-3 py-1 rounded-xl bg-[#6254E8] hover:bg-[#5244d4] text-white font-bold text-[11px] shadow-xs transition-all flex items-center gap-1.5 ml-auto cursor-pointer"
+                        >
+                          <Zap className="w-3 h-3 text-[#F3C77B]" />
+                          <span>Pay via Razorpay</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-[#2E7D5D] flex items-center gap-1 justify-end">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#55C9A2]" />
+                          <span>Settled</span>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -392,6 +531,203 @@ export const CustomerPortal: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Razorpay Payment Gateway Modal */}
+      {razorpayInvoice && (
+        <div className="fixed inset-0 z-50 bg-[#252735]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E3E8EE] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-[#E3E8EE] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-[#0C2340] text-white font-bold text-xs flex items-center justify-center font-mono">
+                  R
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#252735]">Razorpay Checkout</h3>
+                  <div className="text-[10px] text-[#697386]">Direct Merchant Integration</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setRazorpayInvoice(null)}
+                className="text-[#9299A8] hover:text-[#252735] text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {paymentSuccessRef ? (
+              <div className="p-4 rounded-2xl bg-[#E1F3EB] border border-[#55C9A2]/40 text-center space-y-3">
+                <CheckCircle2 className="w-10 h-10 text-[#55C9A2] mx-auto" />
+                <div className="font-bold text-sm text-[#252735]">Payment Authorized!</div>
+                <div className="text-xs text-[#697386]">
+                  Invoice <strong>{razorpayInvoice.invoiceNumber}</strong> settled in full.
+                </div>
+                <div className="p-2 rounded-xl bg-white border border-[#CEEBDD] font-mono text-[11px] text-[#2E7D5D]">
+                  Txn ID: {paymentSuccessRef}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRazorpayInvoice(null)}
+                  className="w-full py-2 rounded-xl bg-[#55C9A2] text-white font-bold text-xs shadow-xs hover:bg-[#45b791] cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                <div className="p-3.5 rounded-2xl bg-[#F0EDFA]/50 border border-[#E3DCF7] flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] text-[#697386]">Payable against {razorpayInvoice.invoiceNumber}</div>
+                    <div className="text-xs font-bold text-[#252735]">{activeCustomerUser.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[#697386]">Amount:</div>
+                    <div className="text-lg font-black font-mono text-[#6254E8]">
+                      ₹{razorpayInvoice.balanceDue.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Method selector */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRazorpayMethod('UPI')}
+                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                      razorpayMethod === 'UPI'
+                        ? 'border-[#6254E8] bg-[#F0EDFA] text-[#6254E8] font-bold'
+                        : 'border-[#E3E8EE] text-[#697386]'
+                    }`}
+                  >
+                    UPI / QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRazorpayMethod('CREDIT_CARD')}
+                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                      razorpayMethod === 'CREDIT_CARD'
+                        ? 'border-[#6254E8] bg-[#F0EDFA] text-[#6254E8] font-bold'
+                        : 'border-[#E3E8EE] text-[#697386]'
+                    }`}
+                  >
+                    Card
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRazorpayMethod('NET_BANKING')}
+                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                      razorpayMethod === 'NET_BANKING'
+                        ? 'border-[#6254E8] bg-[#F0EDFA] text-[#6254E8] font-bold'
+                        : 'border-[#E3E8EE] text-[#697386]'
+                    }`}
+                  >
+                    NetBanking
+                  </button>
+                </div>
+
+                {razorpayMethod === 'UPI' && (
+                  <div className="p-3 rounded-2xl border border-[#E3E8EE] bg-white space-y-2 text-center">
+                    <div className="w-24 h-24 mx-auto bg-[#F0EDFA] border border-[#E3DCF7] rounded-xl flex items-center justify-center">
+                      <QrCode className="w-16 h-16 text-[#6254E8]" />
+                    </div>
+                    <div className="text-[10px] text-[#697386]">Scan QR with any UPI App or enter VPA:</div>
+                    <input
+                      type="text"
+                      value={razorpayUpiId}
+                      onChange={(e) => setRazorpayUpiId(e.target.value)}
+                      className="w-full p-2 text-center font-mono rounded-lg border border-[#E3E8EE] text-xs"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={isProcessingPayment}
+                  onClick={handleExecuteRazorpayPayment}
+                  className="w-full py-3 rounded-xl bg-[#0C2340] hover:bg-[#1a365d] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-[#55C9A2]" />
+                      <span>Processing Razorpay Authorization...</span>
+                    </>
+                  ) : (
+                    <span>Pay ₹{razorpayInvoice.balanceDue.toLocaleString('en-IN')} with Razorpay</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Plan Upgrade Modal */}
+      {upgradeSub && (
+        <div className="fixed inset-0 z-50 bg-[#252735]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E3E8EE] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-[#E3E8EE] pb-3">
+              <h3 className="text-sm font-bold text-[#252735] flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-[#6254E8]" />
+                <span>Upgrade / Switch Subscription Plan</span>
+              </h3>
+              <button
+                onClick={() => setUpgradeSub(null)}
+                className="text-[#9299A8] hover:text-[#252735] text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-2xl bg-[#EAF3F8]/50 border border-[#DCE5ED]">
+                <div className="text-[10px] text-[#697386]">Current Contract:</div>
+                <div className="font-bold text-[#252735]">{upgradeSub.number} — {upgradeSub.planName}</div>
+                <div className="text-[11px] text-[#6254E8] font-mono">{upgradeSub.billingFrequency} cycle</div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#252735] mb-1">Target Upgrade Plan</label>
+                <select
+                  value={selectedPlanId}
+                  onChange={(e) => setSelectedPlanId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white font-semibold text-xs"
+                >
+                  {billingPlans.map((pl) => (
+                    <option key={pl.id} value={pl.id}>
+                      {pl.name} ({pl.frequency}) — ₹{pl.basePrice.toLocaleString('en-IN')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-[#E1F3EB]/50 border border-[#CEEBDD] space-y-1">
+                <div className="text-[10px] font-bold text-[#2E7D5D] uppercase tracking-wider">
+                  Prorated Billing Policy (Scene 2):
+                </div>
+                <p className="text-[11px] text-[#697386] leading-relaxed">
+                  Remaining unused value of current cycle is credited against the upgrade tier. Prorated difference will be calculated on the next invoice.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#E3E8EE]">
+                <button
+                  type="button"
+                  onClick={() => setUpgradeSub(null)}
+                  className="px-4 py-2 rounded-xl border border-[#E3E8EE] text-[#697386] font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecutePlanUpgrade}
+                  className="px-4 py-2 rounded-xl bg-[#6254E8] hover:bg-[#5244d4] text-white font-bold cursor-pointer shadow-xs"
+                >
+                  Confirm Upgrade
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

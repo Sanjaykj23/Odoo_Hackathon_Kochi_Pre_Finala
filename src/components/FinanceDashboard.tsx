@@ -299,6 +299,80 @@ export const FinanceDashboard: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Upcoming Subscription Renewals Schedule */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white font-display flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-indigo-500" />
+            <span>Upcoming Subscription Renewals & Contract Expirations</span>
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Subscriptions scheduled to recur or expire, avoiding forgotten manual renewals.
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                <th className="p-3">Sub #</th>
+                <th className="p-3">Customer</th>
+                <th className="p-3">Billing Cadence</th>
+                <th className="p-3">Next Billing Date</th>
+                <th className="p-3">Expiry Date</th>
+                <th className="p-3 font-mono text-right">Recurring Value</th>
+                <th className="p-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {subscriptions.filter((s) => s.status === 'ACTIVE' || s.status === 'CONFIRMED').length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-slate-400 italic">
+                    No active subscriptions scheduled for renewal.
+                  </td>
+                </tr>
+              ) : (
+                subscriptions
+                  .filter((s) => s.status === 'ACTIVE' || s.status === 'CONFIRMED')
+                  .map((sub) => {
+                    const subVal = sub.lines.reduce((acc, l) => acc + l.totalAmount, 0);
+
+                    return (
+                      <tr key={sub.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td className="p-3 font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                          {sub.number}
+                        </td>
+                        <td className="p-3 font-medium text-slate-900 dark:text-white">
+                          {sub.customerName}
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
+                            {sub.billingFrequency}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-slate-700 dark:text-slate-300">
+                          {sub.nextBillingDate}
+                        </td>
+                        <td className="p-3 font-mono text-slate-500">
+                          {sub.expiryDate || 'Continuous / Auto-renew'}
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-900 dark:text-white font-mono">
+                          ₹{subVal.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            {sub.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

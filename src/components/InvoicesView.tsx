@@ -16,8 +16,9 @@ import {
 } from 'lucide-react';
 
 export const InvoicesView: React.FC = () => {
-  const { invoices, recordPayment, confirmInvoice, cancelInvoice } = useApp();
+  const { invoices, payments, recordPayment, confirmInvoice, cancelInvoice } = useApp();
 
+  const [activeSubTab, setActiveSubTab] = useState<'INVOICES' | 'PAYMENTS'>('INVOICES');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<Invoice | null>(null);
@@ -44,6 +45,14 @@ export const InvoicesView: React.FC = () => {
       return inv.status === 'CONFIRMED' && inv.dueDate < todayStr;
     }
     return inv.status === statusFilter;
+  });
+
+  const filteredPayments = payments.filter((p) => {
+    return (
+      p.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.transactionRef.toLowerCase().includes(searchTerm.toLowerCase())
+    );
   });
 
   const handleOpenPaymentModal = (inv: Invoice) => {
@@ -86,153 +95,260 @@ export const InvoicesView: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Controls */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search invoice number or customer..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
-          {['ALL', 'CONFIRMED', 'PAID', 'OVERDUE', 'CANCELLED'].map((st) => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                statusFilter === st
-                  ? 'bg-indigo-600 text-white shadow-2xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {st}
-            </button>
-          ))}
-        </div>
+      {/* Sub-Tab Navigation Header */}
+      <div className="flex border-b border-slate-200 dark:border-slate-800">
+        <button
+          onClick={() => setActiveSubTab('INVOICES')}
+          className={`px-4 py-2.5 text-xs font-bold transition-colors border-b-2 ${
+            activeSubTab === 'INVOICES'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          GST Invoices Ledger ({invoices.length})
+        </button>
+        <button
+          onClick={() => setActiveSubTab('PAYMENTS')}
+          className={`px-4 py-2.5 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
+            activeSubTab === 'PAYMENTS'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+          <span>Payment Receipts Ledger ({payments.length})</span>
+        </button>
       </div>
 
-      {/* Invoice Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
-                <th className="py-3 px-4">Invoice #</th>
-                <th className="py-3 px-4">Sub Ref</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Issue / Due Date</th>
-                <th className="py-3 px-4 text-right">Subtotal</th>
-                <th className="py-3 px-4 text-right">GST (18%)</th>
-                <th className="py-3 px-4 text-right">Total Payable</th>
-                <th className="py-3 px-4 text-right">Balance Due</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-8 text-center text-slate-400 italic">
-                    No invoices matching query filters.
-                  </td>
-                </tr>
-              ) : (
-                filteredInvoices.map((inv) => {
-                  const isOverdue = inv.status === 'CONFIRMED' && inv.dueDate < todayStr;
+      {activeSubTab === 'INVOICES' ? (
+        <>
+          {/* Filter Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search invoice number or customer..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
 
-                  return (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                        {inv.invoiceNumber}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-500">{inv.subscriptionNumber}</td>
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-slate-900 dark:text-white">
-                          {inv.customerName}
-                        </div>
-                        {inv.customerGstin && (
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            GSTIN: {inv.customerGstin}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
-                        <div>Iss: {inv.issueDate}</div>
-                        <div className={isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : ''}>
-                          Due: {inv.dueDate}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
-                        ₹{inv.subtotal.toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
-                        ₹{inv.taxTotal.toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white font-mono">
-                        ₹{inv.totalAmount.toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold font-mono">
-                        {inv.balanceDue > 0 ? (
-                          <span className="text-rose-600 dark:text-rose-400">
-                            ₹{inv.balanceDue.toLocaleString('en-IN')}
-                          </span>
-                        ) : (
-                          <span className="text-emerald-600 dark:text-emerald-400">₹0</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {inv.status === 'PAID' ? (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            PAID
-                          </span>
-                        ) : isOverdue ? (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                            OVERDUE
-                          </span>
-                        ) : inv.status === 'CONFIRMED' ? (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
-                            OUTSTANDING
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
-                            {inv.status}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right space-x-1.5">
-                        <button
-                          onClick={() => setSelectedInvoiceForPrint(inv)}
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
-                          title="Print Official GST Tax Invoice"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+              {['ALL', 'CONFIRMED', 'PAID', 'OVERDUE', 'CANCELLED'].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                    statusFilter === st
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                        {inv.balanceDue > 0 && inv.status !== 'CANCELLED' && (
-                          <button
-                            onClick={() => handleOpenPaymentModal(inv)}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors"
-                          >
-                            Record Payment
-                          </button>
-                        )}
+          {/* Invoice Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-4">Invoice #</th>
+                    <th className="py-3 px-4">Sub Ref</th>
+                    <th className="py-3 px-4">Customer</th>
+                    <th className="py-3 px-4">Issue / Due Date</th>
+                    <th className="py-3 px-4 text-right">Subtotal</th>
+                    <th className="py-3 px-4 text-right">GST (18%)</th>
+                    <th className="py-3 px-4 text-right">Total Payable</th>
+                    <th className="py-3 px-4 text-right">Balance Due</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {filteredInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-8 text-center text-slate-400 italic">
+                        No invoices matching query filters.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ) : (
+                    filteredInvoices.map((inv) => {
+                      const isOverdue = inv.status === 'CONFIRMED' && inv.dueDate < todayStr;
+
+                      return (
+                        <tr
+                          key={inv.id}
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                        >
+                          <td className="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                            {inv.invoiceNumber}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-slate-500">{inv.subscriptionNumber}</td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {inv.customerName}
+                            </div>
+                            {inv.customerGstin && (
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                GSTIN: {inv.customerGstin}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
+                            <div>Iss: {inv.issueDate}</div>
+                            <div className={isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : ''}>
+                              Due: {inv.dueDate}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                            ₹{inv.subtotal.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                            ₹{inv.taxTotal.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white font-mono">
+                            ₹{inv.totalAmount.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold font-mono">
+                            {inv.balanceDue > 0 ? (
+                              <span className="text-rose-600 dark:text-rose-400">
+                                ₹{inv.balanceDue.toLocaleString('en-IN')}
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600 dark:text-emerald-400">₹0</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            {inv.status === 'PAID' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                PAID
+                              </span>
+                            ) : isOverdue ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                OVERDUE
+                              </span>
+                            ) : inv.status === 'CONFIRMED' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                                OUTSTANDING
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
+                                {inv.status}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-1.5">
+                            <button
+                              onClick={() => setSelectedInvoiceForPrint(inv)}
+                              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
+                              title="Print Official GST Tax Invoice"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+
+                            {inv.balanceDue > 0 && inv.status !== 'CANCELLED' && (
+                              <button
+                                onClick={() => handleOpenPaymentModal(inv)}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors"
+                              >
+                                Record Payment
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Payments & Cash Receipts Ledger */
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search payment UTR, customer, or invoice..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Total Recorded Payments:{' '}
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                ₹{payments.reduce((acc, p) => acc + p.amount, 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-4">Payment Date</th>
+                    <th className="py-3 px-4">Invoice #</th>
+                    <th className="py-3 px-4">Customer</th>
+                    <th className="py-3 px-4">Method / Channel</th>
+                    <th className="py-3 px-4">Transaction UTR / Ref</th>
+                    <th className="py-3 px-4 text-right">Amount (₹)</th>
+                    <th className="py-3 px-4">Recorded By</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {filteredPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400 italic">
+                        No payment receipts logged matching search query.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPayments.map((pmt) => (
+                      <tr
+                        key={pmt.id}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
+                          {pmt.paymentDate}
+                        </td>
+                        <td className="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                          {pmt.invoiceNumber}
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-900 dark:text-white">
+                          {pmt.customerName}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded font-mono font-semibold text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            {pmt.method}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400">
+                          {pmt.transactionRef}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                          +₹{pmt.amount.toLocaleString('en-IN')}
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 text-[11px]">{pmt.recordedBy}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Record Payment Modal */}
       {selectedInvoiceForPayment && (

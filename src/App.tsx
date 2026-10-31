@@ -41,7 +41,7 @@ const AuthenticatedLayout: React.FC = () => {
     } else if (pathname === '/finance') {
       navigate('/finance/dashboard');
     } else if (pathname === '/staff') {
-      navigate('/staff/kanban');
+      navigate('/staff/subscriptions-list');
     } else if (pathname === '/customer') {
       navigate('/customer/portal');
     }
@@ -58,7 +58,7 @@ const AuthenticatedLayout: React.FC = () => {
       if (pathname === '/admin/catalog') return <ProductCatalog />;
       if (pathname === '/admin/discounts') return <DiscountRulesView />;
       if (pathname === '/admin/staff-iam') return <StaffIAMView />;
-      if (pathname === '/admin/subscriptions-kanban') return <KanbanBoard />;
+      if (pathname === '/admin/subscriptions-kanban') return <SubscriptionList />;
       if (pathname === '/admin/subscriptions-list') return <SubscriptionList />;
       if (pathname === '/admin/quotations') return <QuotationManager />;
       if (pathname === '/admin/billing-run') return <BillingEngineView />;
@@ -85,7 +85,7 @@ const AuthenticatedLayout: React.FC = () => {
         return <AccessRestricted requiredRole="Sales Staff / Admin" featureName="Sales Portal" />;
       }
 
-      if (pathname === '/staff/kanban') return <KanbanBoard />;
+      if (pathname === '/staff/kanban') return <SubscriptionList />;
       if (pathname === '/staff/subscriptions-list') return <SubscriptionList />;
       if (pathname === '/staff/quotations') return <QuotationManager />;
       if (pathname === '/staff/catalog') return <ProductCatalog />;

@@ -38,7 +38,7 @@ export const RegisterPage: React.FC = () => {
     if (isAuthenticated) {
       if (authenticatedUser.role === 'ADMIN') navigate('/admin/dashboard');
       else if (authenticatedUser.role === 'FINANCE_LEAD') navigate('/finance/dashboard');
-      else if (authenticatedUser.role === 'STAFF') navigate('/staff/kanban');
+      else if (authenticatedUser.role === 'STAFF') navigate('/staff/subscriptions-list');
       else navigate('/customer/portal');
     }
   }, [isAuthenticated, authenticatedUser, navigate]);

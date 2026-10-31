@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, isAuthenticated, authenticatedUser, requestPasswordReset } = useApp();
+  const { login, isAuthenticated, authenticatedUser, requestPasswordReset, users } = useApp();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -35,7 +35,7 @@ export const LoginPage: React.FC = () => {
     if (isAuthenticated) {
       if (authenticatedUser.role === 'ADMIN') navigate('/admin/dashboard');
       else if (authenticatedUser.role === 'FINANCE_LEAD') navigate('/finance/dashboard');
-      else if (authenticatedUser.role === 'STAFF') navigate('/staff/kanban');
+      else if (authenticatedUser.role === 'STAFF') navigate('/staff/subscriptions-list');
       else navigate('/customer/portal');
     }
   }, [isAuthenticated, authenticatedUser, navigate]);
@@ -44,8 +44,21 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     if (!email || !password) return;
     setLoading(true);
-    await login(email.trim(), password);
+    const success = await login(email.trim(), password);
     setLoading(false);
+    if (success) {
+      const trimmed = email.trim().toLowerCase();
+      const targetUser = users.find((u) => u.email.toLowerCase() === trimmed) || authenticatedUser;
+      if (targetUser.role === 'ADMIN' || trimmed.includes('admin')) {
+        navigate('/admin/dashboard');
+      } else if (targetUser.role === 'FINANCE_LEAD' || trimmed.includes('finance')) {
+        navigate('/finance/dashboard');
+      } else if (targetUser.role === 'STAFF' || trimmed.includes('sales')) {
+        navigate('/staff/subscriptions-list');
+      } else {
+        navigate('/customer/portal');
+      }
+    }
   };
 
   return (

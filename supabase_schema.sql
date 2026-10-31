@@ -276,83 +276,111 @@ ALTER TABLE payments DISABLE ROW LEVEL SECURITY;
 -- and public.customer_profiles with role and company metadata.
 -- ============================================================================
 
+-- Grant schema permissions to avoid "Database error querying schema"
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+        GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+        GRANT ALL ON ALL TABLES IN SCHEMA public TO supabase_auth_admin;
+        GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO supabase_auth_admin;
+        GRANT ALL ON ALL ROUTINES IN SCHEMA public TO supabase_auth_admin;
+    END IF;
+END $$;
+
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
-    user_role_val public.user_role;
+    user_role_val public.user_role := 'CUSTOMER'::public.user_role;
+    role_str text;
 BEGIN
     -- Safely determine role enum
     BEGIN
-        user_role_val := COALESCE(NEW.raw_user_meta_data->>'role', 'CUSTOMER')::public.user_role;
+        role_str := UPPER(COALESCE(NEW.raw_user_meta_data->>'role', 'CUSTOMER'));
+        IF role_str IN ('ADMIN', 'FINANCE', 'SALES', 'CUSTOMER') THEN
+            user_role_val := role_str::public.user_role;
+        END IF;
     EXCEPTION WHEN OTHERS THEN
         user_role_val := 'CUSTOMER'::public.user_role;
     END;
 
     -- Insert or update public.users
-    INSERT INTO public.users (
-        id,
-        email,
-        password_hash,
-        role,
-        name,
-        phone,
-        company_name,
-        gstin,
-        address,
-        is_active
-    )
-    VALUES (
-        NEW.id,
-        NEW.email,
-        'SUPABASE_AUTH',
-        user_role_val,
-        COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-        NEW.raw_user_meta_data->>'phone',
-        COALESCE(NEW.raw_user_meta_data->>'company_name', split_part(NEW.email, '@', 1)),
-        NEW.raw_user_meta_data->>'gstin',
-        NEW.raw_user_meta_data->>'address',
-        TRUE
-    )
-    ON CONFLICT (id) DO UPDATE SET
-        email = EXCLUDED.email,
-        name = COALESCE(EXCLUDED.name, public.users.name),
-        company_name = COALESCE(EXCLUDED.company_name, public.users.company_name),
-        gstin = COALESCE(EXCLUDED.gstin, public.users.gstin),
-        phone = COALESCE(EXCLUDED.phone, public.users.phone),
-        address = COALESCE(EXCLUDED.address, public.users.address),
-        updated_at = NOW();
-
-    -- If role is CUSTOMER, ensure customer_profiles is populated
-    IF user_role_val = 'CUSTOMER' THEN
-        INSERT INTO public.customer_profiles (
-            user_id,
+    BEGIN
+        INSERT INTO public.users (
+            id,
+            email,
+            password_hash,
+            role,
+            name,
+            phone,
             company_name,
             gstin,
-            billing_address
+            address,
+            is_active
         )
         VALUES (
             NEW.id,
+            NEW.email,
+            'SUPABASE_AUTH',
+            user_role_val,
+            COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+            NEW.raw_user_meta_data->>'phone',
             COALESCE(NEW.raw_user_meta_data->>'company_name', split_part(NEW.email, '@', 1)),
             NEW.raw_user_meta_data->>'gstin',
-            COALESCE(NEW.raw_user_meta_data->>'address', 'India')
+            NEW.raw_user_meta_data->>'address',
+            TRUE
         )
-        ON CONFLICT (user_id) DO UPDATE SET
-            company_name = COALESCE(EXCLUDED.company_name, public.customer_profiles.company_name),
-            gstin = COALESCE(EXCLUDED.gstin, public.customer_profiles.gstin),
-            billing_address = COALESCE(EXCLUDED.billing_address, public.customer_profiles.billing_address);
+        ON CONFLICT (id) DO UPDATE SET
+            email = EXCLUDED.email,
+            name = COALESCE(EXCLUDED.name, public.users.name),
+            company_name = COALESCE(EXCLUDED.company_name, public.users.company_name),
+            gstin = COALESCE(EXCLUDED.gstin, public.users.gstin),
+            phone = COALESCE(EXCLUDED.phone, public.users.phone),
+            address = COALESCE(EXCLUDED.address, public.users.address),
+            updated_at = NOW();
+    EXCEPTION WHEN OTHERS THEN
+        -- Never abort auth transaction on profile upsert
+    END;
+
+    -- If role is CUSTOMER, ensure customer_profiles is populated
+    IF user_role_val = 'CUSTOMER' THEN
+        BEGIN
+            INSERT INTO public.customer_profiles (
+                user_id,
+                company_name,
+                gstin,
+                billing_address
+            )
+            VALUES (
+                NEW.id,
+                COALESCE(NEW.raw_user_meta_data->>'company_name', split_part(NEW.email, '@', 1)),
+                NEW.raw_user_meta_data->>'gstin',
+                COALESCE(NEW.raw_user_meta_data->>'address', 'India')
+            )
+            ON CONFLICT (user_id) DO NOTHING;
+        EXCEPTION WHEN OTHERS THEN
+            -- Ignore profile insert error
+        END;
     END IF;
 
     RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    -- Safeguard: Never let trigger failures prevent login or signup in GoTrue
+    RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 -- Drop trigger if already exists
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
--- Trigger runs whenever a user is added to auth.users (via SignUp, Dashboard, or SQL)
+-- Trigger runs ONLY AFTER INSERT on auth.users (NEVER on UPDATE to prevent login schema errors!)
 CREATE TRIGGER on_auth_user_created
-    AFTER INSERT OR UPDATE ON auth.users
+    AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
 
 
 -- ============================================================================

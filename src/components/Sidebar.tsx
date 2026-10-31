@@ -50,11 +50,6 @@ export const Sidebar: React.FC = () => {
           badgeVariant: 'mint'
         },
         {
-          path: '/admin/subscriptions-kanban',
-          label: 'Subscriptions Kanban',
-          icon: <Kanban className="w-4 h-4" />
-        },
-        {
           path: '/admin/catalog',
           label: 'Products & Plans',
           icon: <Package className="w-4 h-4" />
@@ -121,16 +116,11 @@ export const Sidebar: React.FC = () => {
     if (role === 'STAFF') {
       return [
         {
-          path: '/staff/kanban',
-          label: 'Subscriptions Kanban',
-          icon: <Kanban className="w-4 h-4" />,
+          path: '/staff/subscriptions-list',
+          label: 'Subscriptions',
+          icon: <Table className="w-4 h-4" />,
           badge: `${activeSubCount} active`,
           badgeVariant: 'mint'
-        },
-        {
-          path: '/staff/subscriptions-list',
-          label: 'Subscriptions Table',
-          icon: <Table className="w-4 h-4" />
         },
         {
           path: '/staff/quotations',

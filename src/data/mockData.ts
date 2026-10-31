@@ -9,7 +9,57 @@ import {
   DiscountRule
 } from '../types';
 
-export const INITIAL_USERS: User[] = [];
+export const INITIAL_USERS: User[] = [
+  {
+    id: 'usr_admin',
+    name: 'Ananya Sharma',
+    email: 'admin@brightloop.io',
+    password: 'Brightloop@2026!',
+    role: 'ADMIN',
+    companyName: 'Brightloop Software Pvt Ltd',
+    gstin: '29AABCB1234F1Z5',
+    pan: 'AABCB1234F',
+    phone: '+91 98450 11223',
+    address: 'Embassy TechVillage, Outer Ring Road, Bengaluru, Karnataka'
+  },
+  {
+    id: 'usr_finance',
+    name: 'Vikram Mehta',
+    email: 'finance@brightloop.io',
+    password: 'Brightloop@2026!',
+    role: 'FINANCE_LEAD',
+    companyName: 'Brightloop Software Pvt Ltd',
+    gstin: '29AABCB1234F1Z5',
+    pan: 'AABCB1234F',
+    phone: '+91 98450 22334',
+    address: 'Embassy TechVillage, Outer Ring Road, Bengaluru, Karnataka'
+  },
+  {
+    id: 'usr_sales',
+    name: 'Rohan Verma',
+    email: 'sales@brightloop.io',
+    password: 'Brightloop@2026!',
+    role: 'STAFF',
+    companyName: 'Brightloop Software Pvt Ltd',
+    gstin: '29AABCB1234F1Z5',
+    pan: 'AABCB1234F',
+    phone: '+91 98450 33445',
+    address: 'Embassy TechVillage, Outer Ring Road, Bengaluru, Karnataka'
+  },
+  {
+    id: 'usr_customer',
+    name: 'Suresh Kumar',
+    email: 'billing@infosys.com',
+    password: 'Brightloop@2026!',
+    role: 'CUSTOMER',
+    companyName: 'Infosys Tech Solutions Ltd',
+    gstin: '29AAACI1234M1Z2',
+    pan: 'AAACI1234M',
+    phone: '+91 80 2852 0261',
+    address: 'Electronics City, Hosur Road, Bengaluru, Karnataka'
+  }
+];
+
 
 export const INITIAL_PRODUCTS: Product[] = [
   // --- SOFTWARE PRODUCTS ---

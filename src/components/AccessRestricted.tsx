@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { useNavigate } from '../router/Router';
 import { ShieldAlert, Lock, ArrowLeft } from 'lucide-react';
 
 interface AccessRestrictedProps {
@@ -11,36 +12,44 @@ export const AccessRestricted: React.FC<AccessRestrictedProps> = ({
   requiredRole = 'Administrator',
   featureName = 'this system module'
 }) => {
-  const { currentUser, setActiveView } = useApp();
+  const { authenticatedUser } = useApp();
+  const navigate = useNavigate();
+
+  const handleReturn = () => {
+    if (authenticatedUser.role === 'ADMIN') navigate('/admin/dashboard');
+    else if (authenticatedUser.role === 'FINANCE_LEAD') navigate('/finance/dashboard');
+    else if (authenticatedUser.role === 'STAFF') navigate('/staff/kanban');
+    else navigate('/customer/portal');
+  };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 max-w-lg mx-auto my-12 shadow-xl text-center space-y-4">
-      <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+    <div className="bg-white rounded-3xl border border-[#E3E8EE] p-8 max-w-lg mx-auto my-12 shadow-[0_10px_30px_rgba(41,42,58,0.04)] text-center space-y-4">
+      <div className="w-12 h-12 rounded-2xl bg-[#FFEBEB] border border-[#FFD5D5] flex items-center justify-center text-[#D34545] mx-auto shadow-xs">
         <Lock className="w-6 h-6" />
       </div>
 
       <div>
-        <span className="text-[10px] font-bold px-2.5 py-1 rounded bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-mono">
+        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#FFEBEB] text-[#D34545] border border-[#FFD5D5] font-mono">
           403 ACCESS RESTRICTED
         </span>
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-2 font-display">
+        <h2 className="text-xl font-bold text-[#252735] mt-2">
           Insufficient Permissions
         </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Your current active role (<strong className="text-slate-900 dark:text-white font-mono">{currentUser.role}</strong>) does not have access to {featureName}.
+        <p className="text-xs text-[#697386] mt-1 leading-relaxed">
+          Your current active role (<strong className="text-[#252735] font-mono">{authenticatedUser.role}</strong>) does not have access to {featureName}.
         </p>
       </div>
 
-      <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl text-xs text-slate-600 dark:text-slate-300">
-        Requires <strong>{requiredRole}</strong> elevated security clearance. Use the top-bar role switcher to switch perspective if testing admin controls.
+      <div className="p-3.5 bg-[#F0EDFA]/40 border border-[#E3DCF7] rounded-2xl text-xs text-[#697386] leading-relaxed">
+        Requires <strong>{requiredRole}</strong> clearance. Use the top navigation role switcher to toggle perspective.
       </div>
 
       <button
-        onClick={() => setActiveView(currentUser.role === 'CUSTOMER' ? 'customer_portal' : 'dashboard')}
-        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-xs transition-colors"
+        onClick={handleReturn}
+        className="px-5 py-2.5 rounded-xl bg-[#6254E8] hover:bg-[#5245D0] text-white text-xs font-semibold inline-flex items-center gap-2 shadow-xs transition-all active:scale-[0.98]"
       >
         <ArrowLeft className="w-4 h-4" />
-        <span>Return to Allowed Dashboard</span>
+        <span>Return to Authorized View</span>
       </button>
     </div>
   );

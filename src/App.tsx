@@ -109,15 +109,24 @@ const AuthenticatedLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors">
-      <Navbar />
+    <div className="min-h-screen bg-[#EAF3F8] text-[#252735] flex flex-col antialiased selection:bg-[#E9E6FF] selection:text-[#6254E8] relative overflow-x-hidden">
+      {/* Ambient background pastel atmospheric glow */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[350px] bg-[#E1F3EB]/40 rounded-full blur-3xl" />
+        <div className="absolute top-20 right-1/4 w-[500px] h-[350px] bg-[#F0EDFA]/50 rounded-full blur-3xl" />
+        <div className="absolute bottom-10 left-1/3 w-[700px] h-[400px] bg-[#E5F0FA]/40 rounded-full blur-3xl" />
+      </div>
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
-        <Sidebar />
+      <div className="relative z-10 flex flex-col flex-1">
+        <Navbar />
 
-        <main className="flex-1 min-w-0">
-          {renderActiveRoute()}
-        </main>
+        <div className="flex-1 flex max-w-[1680px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6 items-start">
+          <Sidebar />
+
+          <main className="flex-1 min-w-0 transition-all duration-200">
+            {renderActiveRoute()}
+          </main>
+        </div>
       </div>
 
       <ToastContainer />

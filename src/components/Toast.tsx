@@ -12,25 +12,25 @@ export const ToastContainer: React.FC = () => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-lg border transition-all duration-200 animate-in fade-in slide-in-from-bottom-3 ${
+          className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl shadow-[0_12px_32px_rgba(41,42,58,0.1)] border transition-all duration-200 animate-in fade-in slide-in-from-bottom-3 ${
             toast.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100'
+              ? 'bg-[#E1F3EB] border-[#CEEBDD] text-[#2E7D5D]'
               : toast.type === 'error'
-              ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-100'
-              : 'bg-slate-900 dark:bg-slate-800 border-slate-700 text-white'
+              ? 'bg-[#FFEBEB] border-[#FFD5D5] text-[#D34545]'
+              : 'bg-white border-[#E3DCF7] text-[#252735]'
           }`}
         >
           <div className="shrink-0 mt-0.5">
-            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
-            {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
-            {toast.type === 'info' && <Info className="w-5 h-5 text-indigo-400" />}
+            {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-[#55C9A2]" />}
+            {toast.type === 'error' && <AlertCircle className="w-4 h-4 text-[#E99B9B]" />}
+            {toast.type === 'info' && <Info className="w-4 h-4 text-[#6254E8]" />}
           </div>
-          <div className="flex-1 text-sm font-medium leading-relaxed">{toast.text}</div>
+          <div className="flex-1 text-xs font-semibold leading-relaxed">{toast.text}</div>
           <button
             onClick={() => removeToast(toast.id)}
-            className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1"
+            className="shrink-0 text-[#9299A8] hover:text-[#252735] transition-colors p-0.5"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       ))}

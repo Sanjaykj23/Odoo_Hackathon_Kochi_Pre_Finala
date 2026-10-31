@@ -16,8 +16,8 @@ import {
   Sparkles,
   Trash2,
   UserPlus,
-  Info,
-  HelpCircle
+  HelpCircle,
+  IndianRupee
 } from 'lucide-react';
 
 interface QuoteLineInput {
@@ -29,21 +29,19 @@ interface QuoteLineInput {
 
 export const QuotationManager: React.FC = () => {
   const {
-    templates,
     billingPlans,
     products,
     users,
     discounts,
     addUser,
     createSubscription,
-    addTemplate,
     setActiveView
   } = useApp();
 
   // Customer Target Mode
   const [customerMode, setCustomerMode] = useState<'EXISTING' | 'NEW'>('EXISTING');
   const [selectedCustomerId, setSelectedCustomerId] = useState(
-    users.find((u) => u.role === 'CUSTOMER')?.id || users[0].id
+    users.find((u) => u.role === 'CUSTOMER')?.id || users[0]?.id || ''
   );
 
   // New Customer Form State
@@ -62,7 +60,7 @@ export const QuotationManager: React.FC = () => {
   const [selectedDiscountCode, setSelectedDiscountCode] = useState<string>('');
   const [customDiscountPercent, setCustomDiscountPercent] = useState<number>(0);
   const [offerValidityDays, setOfferValidityDays] = useState<number>(30);
-  const [customOfferTitle, setCustomOfferTitle] = useState('Multi-Product Enterprise Suite Offer');
+  const [customOfferTitle, setCustomOfferTitle] = useState('Enterprise Multi-Seat License Agreement');
   const [showFormulaInfo, setShowFormulaInfo] = useState(false);
 
   // Add line item
@@ -157,15 +155,13 @@ export const QuotationManager: React.FC = () => {
       }
 
       const newId = `usr_cust_${Date.now().toString(36)}`;
-      const created = addUser({
+      addUser({
         name: newCustName,
         email: newCustEmail,
         role: 'CUSTOMER',
         companyName: newCustCompany || newCustName,
         gstin: newCustGstin || undefined
       });
-
-      if (!created) return;
 
       customerId = newId;
       customerName = newCustName;
@@ -183,7 +179,6 @@ export const QuotationManager: React.FC = () => {
     const expiry = new Date();
     expiry.setDate(today.getDate() + offerValidityDays);
 
-    // Build subscription lines with proportional discount allocation
     const subLines = processedLines.map((line, idx) => {
       const lineProportion = grossTotal > 0 ? line.lineGross / grossTotal : 0;
       const lineDiscount = discountDeduction * lineProportion;
@@ -209,7 +204,7 @@ export const QuotationManager: React.FC = () => {
       customerEmail,
       customerGstin,
       planId: matchedPlan.id,
-      planName: `${customOfferTitle} (${selectedDuration} Duration)`,
+      planName: `${customOfferTitle} (${selectedDuration})`,
       billingFrequency: selectedDuration,
       startDate: today.toISOString().split('T')[0],
       nextBillingDate: today.toISOString().split('T')[0],
@@ -220,7 +215,7 @@ export const QuotationManager: React.FC = () => {
       discountAmount: discountDeduction,
       lines: subLines,
       closureRules: matchedPlan.closureRules,
-      notes: `Quotation offer issued for ${selectedDuration} license duration containing ${subLines.length} software product(s). Valid for ${offerValidityDays} days.`
+      notes: `Quotation offer issued for ${selectedDuration} license duration with ${subLines.length} line(s). Valid for ${offerValidityDays} days.`
     });
 
     setActiveView('subscriptions_kanban');
@@ -228,83 +223,85 @@ export const QuotationManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-display flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <span>Multi-Product Quotation Offer Builder</span>
+          <h1 className="text-2xl font-extrabold tracking-tight text-[#252735]">
+            Quotation Offers
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Bundle multiple software licenses, assign target customers (existing or new), apply duration cadences, and calculate itemized GST.
+          <p className="text-xs text-[#697386] mt-0.5">
+            Configure multi-seat software quotes, apply promotional coupons, and compute GST tax lines in real-time.
           </p>
         </div>
 
         <button
           onClick={() => setShowFormulaInfo(!showFormulaInfo)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/80 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#DCE5ED] bg-white hover:bg-[#F0EDFA]/50 text-xs font-semibold text-[#697386] hover:text-[#252735] transition-all shadow-2xs"
         >
-          <HelpCircle className="w-4 h-4 text-indigo-500" />
-          <span>{showFormulaInfo ? 'Hide Pricing Formula' : 'How Price is Calculated?'}</span>
+          <HelpCircle className="w-3.5 h-3.5 text-[#6254E8]" />
+          <span>{showFormulaInfo ? 'Hide Math Formula' : 'Pricing Formula Details'}</span>
         </button>
       </div>
 
-      {/* Math Formula Explanatory Box */}
+      {/* Explanatory Math Drawer */}
       {showFormulaInfo && (
-        <div className="bg-slate-900 text-white rounded-xl p-4 text-xs space-y-2 border border-slate-800 animate-in fade-in">
-          <div className="font-bold text-amber-400 flex items-center gap-2">
+        <div className="p-4 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_8px_30px_rgba(41,42,58,0.04)] text-xs space-y-2 animate-in fade-in duration-150">
+          <div className="font-bold text-[#6254E8] flex items-center gap-2">
             <Calculator className="w-4 h-4" />
-            <span>Exact Pricing Calculation Formula</span>
+            <span>Multi-Seat Pricing & Taxation Rules</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-300 font-mono text-[11px]">
-            <div className="p-2.5 rounded bg-slate-800/80 border border-slate-700 space-y-1">
-              <div className="font-bold text-white">1. Line Item Price:</div>
-              <div>Line Price = (Product Sales Price + Variant Adjustment) × Qty × Cadence Multiplier</div>
-              <div className="text-slate-400">Cadence: Monthly = 1.0, Yearly = 12 × 0.8 (20% Off)</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[#252735] font-mono text-[11px]">
+            <div className="p-3 rounded-2xl bg-[#F0EDFA]/60 border border-[#E3DCF7]">
+              <div className="font-bold text-[#6254E8]">1. Line Total:</div>
+              <div className="text-[10px] text-[#697386] mt-1">(Base Price + Variant) × Quantity × Cadence Factor</div>
+              <div className="text-[10px] text-[#6254E8] mt-0.5">Annual = 12 × 0.8 (20% commitment incentive)</div>
             </div>
-            <div className="p-2.5 rounded bg-slate-800/80 border border-slate-700 space-y-1">
-              <div className="font-bold text-white">2. Discounts & Taxes:</div>
-              <div>Net Taxable = Gross Total - Discount Deduction</div>
-              <div>18% GST = Net Taxable × 0.18 (9% CGST + 9% SGST)</div>
-              <div className="text-emerald-400 font-bold">Grand Total = Net Taxable + 18% GST</div>
+            <div className="p-3 rounded-2xl bg-[#E1F3EB]/60 border border-[#CEEBDD]">
+              <div className="font-bold text-[#2E7D5D]">2. GST Ledger:</div>
+              <div className="text-[10px] text-[#697386] mt-1">Taxable = Gross - Coupon; GST 18% = 9% CGST + 9% SGST</div>
+              <div className="text-[10px] text-[#2E7D5D] mt-0.5 font-bold">Total = Taxable + CGST + SGST</div>
             </div>
           </div>
         </div>
       )}
 
+      {/* 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Step-by-Step Quote Builder Form */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
-          {/* Step 1: Customer Selection or New Customer Provisioning */}
-          <div className="space-y-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+        
+        {/* Left Form: Customer & Bundle Setup (7 Cols) */}
+        <div className="lg:col-span-7 bg-white rounded-3xl border border-[#E3E8EE] p-6 shadow-[0_6px_20px_rgba(41,42,58,0.03)] space-y-5">
+          
+          {/* 1. Target Customer */}
+          <div className="space-y-3 pb-4 border-b border-[#E3E8EE]/70">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <label className="text-xs font-bold text-[#252735] uppercase tracking-wider flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#6254E8]" />
                 <span>1. Target Customer Account</span>
               </label>
 
-              <div className="flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-[11px]">
+              <div className="flex items-center gap-1 p-1 bg-[#F0EDFA]/60 border border-[#E3DCF7] rounded-xl text-xs">
                 <button
                   type="button"
                   onClick={() => setCustomerMode('EXISTING')}
-                  className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                  className={`px-3 py-1 rounded-lg font-semibold transition-all ${
                     customerMode === 'EXISTING'
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-500'
+                      ? 'bg-white text-[#252735] shadow-2xs'
+                      : 'text-[#697386]'
                   }`}
                 >
-                  Existing Customer
+                  Existing
                 </button>
                 <button
                   type="button"
                   onClick={() => setCustomerMode('NEW')}
-                  className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                  className={`px-3 py-1 rounded-lg font-semibold transition-all ${
                     customerMode === 'NEW'
-                      ? 'bg-indigo-600 text-white font-semibold shadow-2xs'
-                      : 'text-slate-500'
+                      ? 'bg-[#6254E8] text-white shadow-2xs'
+                      : 'text-[#697386]'
                   }`}
                 >
-                  + Target New Customer
+                  + New Client
                 </button>
               </div>
             </div>
@@ -313,7 +310,7 @@ export const QuotationManager: React.FC = () => {
               <select
                 value={selectedCustomerId}
                 onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-medium"
+                className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-[#252735] text-xs font-medium outline-hidden focus:border-[#6254E8]"
               >
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -322,8 +319,8 @@ export const QuotationManager: React.FC = () => {
                 ))}
               </select>
             ) : (
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
-                <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+              <div className="p-3.5 bg-[#F0EDFA]/40 rounded-2xl border border-[#E3DCF7] space-y-2 text-xs">
+                <div className="font-bold text-[#6254E8] flex items-center gap-1.5">
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>Provision New Client Record</span>
                 </div>
@@ -331,10 +328,10 @@ export const QuotationManager: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Customer Name (e.g. Reliance Tech)"
+                    placeholder="Customer Name"
                     value={newCustName}
                     onChange={(e) => setNewCustName(e.target.value)}
-                    className="p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                    className="p-2 rounded-xl bg-white border border-[#E3E8EE] outline-hidden focus:border-[#6254E8]"
                   />
                   <input
                     type="email"
@@ -342,7 +339,7 @@ export const QuotationManager: React.FC = () => {
                     placeholder="Billing Email"
                     value={newCustEmail}
                     onChange={(e) => setNewCustEmail(e.target.value)}
-                    className="p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono"
+                    className="p-2 rounded-xl bg-white border border-[#E3E8EE] font-mono outline-hidden focus:border-[#6254E8]"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -351,55 +348,55 @@ export const QuotationManager: React.FC = () => {
                     placeholder="Company Name"
                     value={newCustCompany}
                     onChange={(e) => setNewCustCompany(e.target.value)}
-                    className="p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                    className="p-2 rounded-xl bg-white border border-[#E3E8EE] outline-hidden focus:border-[#6254E8]"
                   />
                   <input
                     type="text"
                     placeholder="GSTIN (e.g. 29AAAAA0000A1Z5)"
                     value={newCustGstin}
                     onChange={(e) => setNewCustGstin(e.target.value)}
-                    className="p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono"
+                    className="p-2 rounded-xl bg-white border border-[#E3E8EE] font-mono outline-hidden focus:border-[#6254E8]"
                   />
                 </div>
               </div>
             )}
           </div>
 
-          {/* Step 2: Multiple Software Licenses Table */}
-          <div className="space-y-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+          {/* 2. Bundle Software Licenses */}
+          <div className="space-y-3 pb-4 border-b border-[#E3E8EE]/70">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <label className="text-xs font-bold text-[#252735] uppercase tracking-wider flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#6254E8]" />
                 <span>2. Software Licenses Bundle ({lineItems.length})</span>
               </label>
 
               <button
                 type="button"
                 onClick={handleAddLine}
-                className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-xs hover:bg-indigo-100 transition-colors flex items-center gap-1"
+                className="px-3 py-1 rounded-xl bg-[#E1F3EB] border border-[#CEEBDD] text-[#2E7D5D] font-semibold text-xs hover:bg-[#D4EFE3] transition-all flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add Software License</span>
+                <span>Add Software Line</span>
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {lineItems.map((line, index) => {
                 const prod = products.find((p) => p.id === line.productId) || products[0];
 
                 return (
                   <div
                     key={line.id}
-                    className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center text-xs"
+                    className="p-3 bg-[#EAF3F8]/40 rounded-2xl border border-[#DCE5ED] grid grid-cols-1 sm:grid-cols-12 gap-2 items-center text-xs"
                   >
                     <div className="sm:col-span-5">
-                      <label className="block text-[10px] font-bold text-slate-400 mb-0.5">
-                        Software Product #{index + 1}
+                      <label className="block text-[10px] font-bold text-[#9299A8] mb-0.5">
+                        Product #{index + 1}
                       </label>
                       <select
                         value={line.productId}
                         onChange={(e) => handleUpdateLine(line.id, 'productId', e.target.value)}
-                        className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+                        className="w-full p-2 rounded-xl bg-white border border-[#E3E8EE] text-[#252735] font-medium outline-hidden"
                       >
                         {products.map((p) => (
                           <option key={p.id} value={p.id}>
@@ -410,13 +407,13 @@ export const QuotationManager: React.FC = () => {
                     </div>
 
                     <div className="sm:col-span-4">
-                      <label className="block text-[10px] font-bold text-slate-400 mb-0.5">
+                      <label className="block text-[10px] font-bold text-[#9299A8] mb-0.5">
                         Attribute Variant
                       </label>
                       <select
                         value={line.variantId}
                         onChange={(e) => handleUpdateLine(line.id, 'variantId', e.target.value)}
-                        className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                        className="w-full p-2 rounded-xl bg-white border border-[#E3E8EE] text-[#252735] outline-hidden"
                       >
                         <option value="">No Variant</option>
                         {prod?.variants.map((v) => (
@@ -428,7 +425,7 @@ export const QuotationManager: React.FC = () => {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-bold text-slate-400 mb-0.5">
+                      <label className="block text-[10px] font-bold text-[#9299A8] mb-0.5">
                         Seats / Qty
                       </label>
                       <input
@@ -438,16 +435,16 @@ export const QuotationManager: React.FC = () => {
                         onChange={(e) =>
                           handleUpdateLine(line.id, 'quantity', parseInt(e.target.value) || 1)
                         }
-                        className="w-full p-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono font-bold"
+                        className="w-full p-2 rounded-xl bg-white border border-[#E3E8EE] font-mono font-bold outline-hidden"
                       />
                     </div>
 
-                    <div className="sm:col-span-1 text-right flex sm:justify-end items-end h-full pt-4">
+                    <div className="sm:col-span-1 text-right flex sm:justify-end items-end h-full pt-3">
                       {lineItems.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveLine(line.id)}
-                          className="p-1.5 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors"
+                          className="p-1.5 rounded-xl text-[#E99B9B] hover:bg-[#FFEBEB] transition-colors"
                           title="Remove Line"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -460,27 +457,27 @@ export const QuotationManager: React.FC = () => {
             </div>
           </div>
 
-          {/* Step 3: License Duration & Discounts */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          {/* 3. Duration & Discounts */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                3. License Duration (Cadence)
+              <label className="block font-semibold text-[#252735] mb-1">
+                3. License Cadence Duration
               </label>
               <select
                 value={selectedDuration}
                 onChange={(e) => setSelectedDuration(e.target.value as BillingFrequency)}
-                className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-indigo-600 dark:text-indigo-400 font-mono"
+                className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-[#6254E8] font-bold font-mono outline-hidden focus:border-[#6254E8]"
               >
-                <option value="MONTHLY">MONTHLY (Standard Duration)</option>
-                <option value="YEARLY">YEARLY (20% Commitment Savings)</option>
-                <option value="WEEKLY">WEEKLY (Sprint Trial)</option>
-                <option value="DAILY">DAILY (On-Demand)</option>
+                <option value="MONTHLY">MONTHLY (Standard Recurring)</option>
+                <option value="YEARLY">YEARLY (20% Annual Savings)</option>
+                <option value="WEEKLY">WEEKLY (Short-term Sprint)</option>
+                <option value="DAILY">DAILY (On-Demand Trial)</option>
               </select>
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                4. Apply Discount Rule
+              <label className="block font-semibold text-[#252735] mb-1">
+                4. Promotional Coupon
               </label>
               <select
                 value={selectedDiscountCode}
@@ -488,7 +485,7 @@ export const QuotationManager: React.FC = () => {
                   setSelectedDiscountCode(e.target.value);
                   setCustomDiscountPercent(0);
                 }}
-                className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full p-2.5 rounded-xl border border-[#E3E8EE] bg-white text-[#252735] outline-hidden focus:border-[#6254E8]"
               >
                 <option value="">No Promotional Code</option>
                 {discounts.filter((d) => d.isActive).map((d) => (
@@ -501,70 +498,70 @@ export const QuotationManager: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Calculation Preview Card */}
-        <div className="lg:col-span-5 bg-gradient-to-b from-slate-900 to-indigo-950 text-white rounded-xl p-5 shadow-xl flex flex-col justify-between space-y-4">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-              <span className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+        {/* Right Card: Live Pastel Quotation Summary (5 Cols) */}
+        <div className="lg:col-span-5 bg-gradient-to-br from-[#F0EDFA]/90 to-[#E8F5F1]/80 rounded-3xl p-6 border border-[#E3DCF7] shadow-[0_10px_30px_rgba(98,84,232,0.05)] flex flex-col justify-between space-y-5">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E3DCF7]">
+              <span className="text-xs font-bold font-mono text-[#6254E8] uppercase tracking-wider flex items-center gap-1.5">
                 <Calculator className="w-4 h-4" />
                 <span>Live Quote Calculation</span>
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                18% GST Applicable
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white text-[#2E7D5D] border border-[#CEEBDD]">
+                GST 18% Compliant
               </span>
             </div>
 
             <div className="space-y-3 text-xs">
               <div className="space-y-1">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Bundled License Lines ({processedLines.length}):
+                <div className="text-[10px] font-bold text-[#697386] uppercase tracking-wider">
+                  Bundled Offerings ({processedLines.length}):
                 </div>
                 {processedLines.map((line, idx) => (
-                  <div key={idx} className="flex justify-between text-slate-300 text-[11px] py-1 border-b border-slate-800/60">
+                  <div key={idx} className="flex justify-between text-[#252735] text-[11px] py-1 border-b border-[#E3DCF7]/50">
                     <div>
-                      <span className="font-bold text-white">{line.prod.name}</span>
-                      <span className="text-slate-400"> × {line.quantity} seats</span>
+                      <span className="font-bold">{line.prod.name}</span>
+                      <span className="text-[#697386]"> × {line.quantity} seats</span>
                       {line.variantName && (
-                        <div className="text-[10px] text-indigo-300 font-mono">{line.variantName}</div>
+                        <div className="text-[10px] text-[#6254E8] font-mono">{line.variantName}</div>
                       )}
                     </div>
-                    <span className="font-mono font-bold text-slate-200">
+                    <span className="font-mono font-bold">
                       ₹{line.lineGross.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                 ))}
               </div>
 
-              <div className="flex justify-between text-slate-300">
-                <span>License Duration:</span>
-                <span className="font-mono font-bold text-amber-300">{selectedDuration}</span>
+              <div className="flex justify-between text-[#697386]">
+                <span>Cadence Schedule:</span>
+                <span className="font-mono font-bold text-[#6254E8]">{selectedDuration}</span>
               </div>
 
-              <div className="pt-2 border-t border-slate-800/80 space-y-1">
-                <div className="flex justify-between text-slate-400">
-                  <span>Gross Total:</span>
-                  <span className="font-mono font-bold text-slate-200">
+              <div className="pt-2 border-t border-[#E3DCF7] space-y-1.5">
+                <div className="flex justify-between text-[#697386]">
+                  <span>Gross Subtotal:</span>
+                  <span className="font-mono font-bold text-[#252735]">
                     ₹{grossTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                   </span>
                 </div>
 
                 {discountDeduction > 0 && (
-                  <div className="flex justify-between text-emerald-400 font-semibold">
-                    <span>Applied Discount:</span>
+                  <div className="flex justify-between text-[#2E7D5D] font-semibold">
+                    <span>Discount Deduction:</span>
                     <span className="font-mono">-₹{discountDeduction.toLocaleString('en-IN')}</span>
                   </div>
                 )}
 
-                <div className="flex justify-between text-slate-400">
-                  <span>CGST 9% + SGST 9%:</span>
-                  <span className="font-mono text-slate-300">
+                <div className="flex justify-between text-[#697386]">
+                  <span>CGST (9%) + SGST (9%):</span>
+                  <span className="font-mono text-[#252735]">
                     +₹{totalGst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-baseline pt-2 border-t-2 border-slate-700 text-base font-bold text-white font-mono">
+                <div className="flex justify-between items-baseline pt-2 border-t-2 border-[#E3DCF7] text-base font-bold text-[#252735] font-mono">
                   <span>Grand Total Payable:</span>
-                  <span className="text-xl text-emerald-400">
+                  <span className="text-2xl text-[#6254E8] tabular-nums">
                     ₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                   </span>
                 </div>
@@ -572,17 +569,17 @@ export const QuotationManager: React.FC = () => {
             </div>
           </div>
 
-          <div className="space-y-2 pt-3 border-t border-slate-800">
-            <button
-              onClick={handleIssueQuotation}
-              className="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2"
-            >
-              <Send className="w-4 h-4 text-slate-950 fill-current" />
-              <span>Issue Multi-Product Quote & Send</span>
-            </button>
-          </div>
+          <button
+            onClick={handleIssueQuotation}
+            className="w-full py-3 rounded-2xl bg-[#6254E8] hover:bg-[#5245D0] active:scale-[0.98] text-white font-bold text-xs shadow-[0_4px_16px_rgba(98,84,232,0.3)] transition-all flex items-center justify-center gap-2"
+          >
+            <Send className="w-4 h-4 fill-current" />
+            <span>Issue Quotation Offer & Save</span>
+          </button>
         </div>
+
       </div>
+
     </div>
   );
 };

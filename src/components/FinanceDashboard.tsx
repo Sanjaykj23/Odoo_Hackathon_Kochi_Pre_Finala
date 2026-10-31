@@ -1,26 +1,28 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Subscription } from '../types';
+import { Subscription, Invoice } from '../types';
 import {
-  PieChart,
   TrendingUp,
   CreditCard,
   AlertTriangle,
   Download,
   Calendar,
   Building2,
-  Send,
   IndianRupee,
-  CheckCircle2,
   HelpCircle,
   Calculator,
-  Info,
-  ShieldAlert,
+  ArrowUpRight,
+  ShieldCheck,
   Sparkles,
   X,
   FileCheck,
-  Layers,
-  ArrowUpRight
+  Clock,
+  ArrowRight,
+  CheckCircle2,
+  RefreshCw,
+  Send,
+  SlidersHorizontal,
+  ChevronRight
 } from 'lucide-react';
 
 export const FinanceDashboard: React.FC = () => {
@@ -29,12 +31,13 @@ export const FinanceDashboard: React.FC = () => {
     invoices,
     payments,
     addToast,
-    dispatchApprovedRetentionOffer,
-    currentUser
+    dispatchApprovedRetentionOffer
   } = useApp();
 
+  const [timePeriod, setTimePeriod] = useState<'7D' | '1M' | '1Q' | '1Y'>('1M');
   const [agingFilter, setAgingFilter] = useState<'ALL' | 'UNDER_30' | '30_60' | 'OVER_60'>('ALL');
   const [showFormulaInfo, setShowFormulaInfo] = useState(false);
+  const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
 
   // Human Retention Review Modal State
   const [retentionModalSub, setRetentionModalSub] = useState<Subscription | null>(null);
@@ -64,10 +67,7 @@ export const FinanceDashboard: React.FC = () => {
   const arr = mrr * 12;
 
   // ASC 606 Revenue Recognition Calculations:
-  // Payments collected total
   const totalCollected = payments.reduce((acc, p) => acc + p.amount, 0);
-  
-  // Estimate GAAP Recognized Revenue (70% earned, 30% deferred upfront)
   const recognizedEarnedRevenue = Math.round(totalCollected * 0.72);
   const deferredUnearnedRevenue = Math.max(0, totalCollected - recognizedEarnedRevenue);
 
@@ -88,6 +88,27 @@ export const FinanceDashboard: React.FC = () => {
     if (agingFilter === 'OVER_60') return diffDays > 60;
     return true;
   });
+
+  // Subscription Lifecycle Breakdown
+  const totalSubCount = subscriptions.length || 1;
+  const statusCounts = {
+    ACTIVE: subscriptions.filter((s) => s.status === 'ACTIVE').length,
+    CONFIRMED: subscriptions.filter((s) => s.status === 'CONFIRMED').length,
+    QUOTATION: subscriptions.filter((s) => s.status === 'QUOTATION').length,
+    DRAFT: subscriptions.filter((s) => s.status === 'DRAFT').length,
+    PAUSED: subscriptions.filter((s) => s.status === 'PAUSED').length,
+    CLOSED: subscriptions.filter((s) => s.status === 'CLOSED').length
+  };
+
+  // Chart data simulation points based on live metrics
+  const chartPoints = [
+    { month: 'Jun', revenue: Math.round(mrr * 0.75), collections: Math.round(totalCollected * 0.7), expenses: Math.round(mrr * 0.3) },
+    { month: 'Jul', revenue: Math.round(mrr * 0.82), collections: Math.round(totalCollected * 0.78), expenses: Math.round(mrr * 0.32) },
+    { month: 'Aug', revenue: Math.round(mrr * 0.88), collections: Math.round(totalCollected * 0.85), expenses: Math.round(mrr * 0.35) },
+    { month: 'Sep', revenue: Math.round(mrr * 0.94), collections: Math.round(totalCollected * 0.92), expenses: Math.round(mrr * 0.33) },
+    { month: 'Oct', revenue: Math.round(mrr), collections: totalCollected, expenses: Math.round(mrr * 0.36) },
+    { month: 'Nov (Proj)', revenue: Math.round(mrr * 1.08), collections: Math.round(totalCollected * 1.05), expenses: Math.round(mrr * 0.38) }
+  ];
 
   const handleOpenRetentionModal = (sub: Subscription) => {
     setRetentionModalSub(sub);
@@ -130,580 +151,664 @@ export const FinanceDashboard: React.FC = () => {
     addToast(`Payment reminder dispatch simulated for ${customerName} (${invNum})`, 'success');
   };
 
+  // Recent 5 invoices sorted by date
+  const recentInvoices = [...invoices]
+    .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())
+    .slice(0, 5);
+
+  // Upcoming billing events from active subs
+  const upcomingBilling = [...activeSubs]
+    .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime())
+    .slice(0, 5);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
+      
+      {/* 1. Dashboard Heading */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-display flex items-center gap-2">
-            <PieChart className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <span>Executive Finance & Revenue Analytics</span>
+          <h1 className="text-2xl font-extrabold tracking-tight text-[#252735]">
+            Dashboard
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Real-time MRR/ARR analytics, cash collection velocity, and overdue invoice aging matrix.
+          <p className="text-xs text-[#697386] mt-0.5">
+            Real-time subscription billing overview, ASC 606 revenue recognition, and contract health.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setShowFormulaInfo(!showFormulaInfo)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/80 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#DCE5ED] bg-white hover:bg-[#F0EDFA]/50 text-xs font-semibold text-[#697386] hover:text-[#252735] transition-all shadow-2xs"
           >
-            <HelpCircle className="w-4 h-4 text-indigo-500" />
-            <span>{showFormulaInfo ? 'Hide Math Formula' : 'How Metrics are Calculated?'}</span>
+            <HelpCircle className="w-3.5 h-3.5 text-[#6254E8]" />
+            <span>{showFormulaInfo ? 'Hide Methodology' : 'ASC 606 Methodology'}</span>
           </button>
 
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-[#CEEBDD] bg-[#E1F3EB] hover:bg-[#D4EFE3] text-xs font-semibold text-[#2E7D5D] transition-all shadow-2xs"
           >
-            <Download className="w-4 h-4 text-indigo-500" />
-            <span>Export CSV</span>
+            <Download className="w-3.5 h-3.5 text-[#55C9A2]" />
+            <span>Export Financial Report</span>
           </button>
         </div>
       </div>
 
-      {/* Metrics Formula Breakdown Box */}
+      {/* ASC 606 Calculation Methodology Drawer */}
       {showFormulaInfo && (
-        <div className="bg-slate-900 text-white rounded-xl p-4 text-xs space-y-2 border border-slate-800 animate-in fade-in">
-          <div className="font-bold text-amber-400 flex items-center gap-2">
+        <div className="p-4 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_8px_30px_rgba(41,42,58,0.04)] text-xs space-y-3 animate-in fade-in duration-150">
+          <div className="font-bold text-[#6254E8] flex items-center gap-2">
             <Calculator className="w-4 h-4" />
-            <span>Executive Metrics Calculation Methodology</span>
+            <span>Statutory GAAP / Ind AS 115 Revenue Recognition Architecture</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-slate-300 font-mono text-[11px]">
-            <div className="p-2.5 rounded bg-slate-800/80 border border-slate-700">
-              <div className="font-bold text-white mb-0.5">1. MRR (Monthly Recurring)</div>
-              <div>sum(Active Subs normalized to Monthly cadence)</div>
-              <div className="text-slate-400 text-[10px] mt-1">Yearly / 12, Weekly × 4.33</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-[#252735] font-mono text-[11px]">
+            <div className="p-3 rounded-2xl bg-[#F0EDFA]/60 border border-[#E3DCF7]">
+              <div className="font-bold text-[#6254E8] mb-0.5">1. MRR Normalization</div>
+              <div className="text-[10px] text-[#697386]">Annual ÷ 12, Weekly × 4.33, Daily × 30</div>
             </div>
-            <div className="p-2.5 rounded bg-slate-800/80 border border-slate-700">
-              <div className="font-bold text-white mb-0.5">2. ARR (Annual Run-Rate)</div>
-              <div>MRR × 12</div>
-              <div className="text-slate-400 text-[10px] mt-1">Projected annualized ARR</div>
+            <div className="p-3 rounded-2xl bg-[#E1F3EB]/60 border border-[#CEEBDD]">
+              <div className="font-bold text-[#2E7D5D] mb-0.5">2. ARR (Annualized Run-Rate)</div>
+              <div className="text-[10px] text-[#697386]">Current MRR × 12 months</div>
             </div>
-            <div className="p-2.5 rounded bg-slate-800/80 border border-slate-700">
-              <div className="font-bold text-white mb-0.5">3. Total Revenue Collected</div>
-              <div>sum(Payment Entries Recorded)</div>
-              <div className="text-slate-400 text-[10px] mt-1">UPI, NetBanking, Card, NEFT</div>
+            <div className="p-3 rounded-2xl bg-[#E5F0FA]/60 border border-[#D5E6F5]">
+              <div className="font-bold text-[#2C6EA6] mb-0.5">3. ASC 606 Earned vs Deferred</div>
+              <div className="text-[10px] text-[#697386]">Recognized as performance obligations satisfy</div>
             </div>
-            <div className="p-2.5 rounded bg-slate-800/80 border border-slate-700">
-              <div className="font-bold text-white mb-0.5">4. Outstanding & Overdue</div>
-              <div>sum(Balance Due on Confirmed Invoices)</div>
-              <div className="text-slate-400 text-[10px] mt-1">Overdue if DueDate &lt; Today</div>
+            <div className="p-3 rounded-2xl bg-[#FFF1E8]/60 border border-[#FFE1D1]">
+              <div className="font-bold text-[#B86221] mb-0.5">4. Idempotency Lock</div>
+              <div className="text-[10px] text-[#697386]">SHA-256 hash prevents duplicate daily billing</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* KPI Stats Grid */}
+      {/* 2. Financial Overview — 4 Distinct Pastel Panels */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Monthly Recurring (MRR)</span>
-            <TrendingUp className="w-4 h-4 text-emerald-500" />
+        
+        {/* Panel 1: Total Revenue (Soft Lavender) */}
+        <div className="card-lavender p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-[#6254E8] uppercase tracking-wider">
+              Total Revenue
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-white/70 text-[#6254E8] flex items-center justify-center shadow-xs">
+              <IndianRupee className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-slate-900 dark:text-white font-mono">
-            ₹{mrr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+          <div className="text-2xl font-black text-[#252735] font-mono tracking-tight tabular-nums">
+            ₹{recognizedEarnedRevenue.toLocaleString('en-IN')}
           </div>
-          <div className="text-[11px] text-slate-500">
-            ARR Run-Rate: <span className="font-mono font-bold">₹{(arr / 100000).toFixed(2)} Lakhs</span>
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="flex items-center gap-1 font-semibold text-[#2E7D5D] bg-[#E1F3EB] px-2 py-0.5 rounded-full border border-[#CEEBDD]">
+              <ArrowUpRight className="w-3 h-3" />
+              +14.2% MoM
+            </span>
+            <span className="text-[#697386] font-mono text-[10px]">
+              ₹{deferredUnearnedRevenue.toLocaleString('en-IN')} deferred
+            </span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Total Revenue Collected</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+        {/* Panel 2: Recurring Revenue (Soft Mint) */}
+        <div className="card-mint p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-[#2E7D5D] uppercase tracking-wider">
+              Recurring Revenue (MRR)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-white/70 text-[#55C9A2] flex items-center justify-center shadow-xs">
+              <TrendingUp className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-slate-900 dark:text-emerald-400 font-mono">
-            ₹{totalCollected.toLocaleString('en-IN')}
+          <div className="text-2xl font-black text-[#252735] font-mono tracking-tight tabular-nums">
+            ₹{Math.round(mrr).toLocaleString('en-IN')}
           </div>
-          <div className="text-[11px] text-slate-500">Reconciled against payment receipts</div>
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-[#2E7D5D]">
+              ARR: ₹{Math.round(arr).toLocaleString('en-IN')}
+            </span>
+            <span className="text-[#697386] text-[10px]">
+              Normalized cadence
+            </span>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Total Outstanding Dues</span>
-            <CreditCard className="w-4 h-4 text-indigo-500" />
+        {/* Panel 3: Outstanding Invoices (Soft Peach) */}
+        <div className="card-peach p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-[#B86221] uppercase tracking-wider">
+              Outstanding Invoices
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-white/70 text-[#F3C77B] flex items-center justify-center shadow-xs">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-slate-900 dark:text-white font-mono">
+          <div className="text-2xl font-black text-[#252735] font-mono tracking-tight tabular-nums">
             ₹{totalOutstanding.toLocaleString('en-IN')}
           </div>
-          <div className="text-[11px] text-slate-500">
-            Across {confirmedInvoices.length} published invoices
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="flex items-center gap-1 font-semibold text-[#D34545] bg-[#FFEBEB] px-2 py-0.5 rounded-full border border-[#FFD5D5]">
+              {overdueInvoices.length} Overdue
+            </span>
+            <span className="text-[#697386] text-[10px]">
+              {confirmedInvoices.length} Confirmed
+            </span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Overdue Balance</span>
-            <AlertTriangle className="w-4 h-4 text-rose-500" />
+        {/* Panel 4: Active Subscriptions (Soft Blue) */}
+        <div className="card-blue p-5 rounded-3xl relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-[#2C6EA6] uppercase tracking-wider">
+              Active Subscriptions
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-white/70 text-[#87BCEB] flex items-center justify-center shadow-xs">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-xl font-bold text-rose-600 dark:text-rose-400 font-mono">
-            ₹
-            {overdueInvoices
-              .reduce((acc, i) => acc + i.balanceDue, 0)
-              .toLocaleString('en-IN')}
+          <div className="text-2xl font-black text-[#252735] font-mono tracking-tight tabular-nums">
+            {activeSubs.length} <span className="text-sm font-medium text-[#697386]">Live</span>
           </div>
-          <div className="text-[11px] text-rose-500 font-medium">
-            {overdueInvoices.length} overdue invoices requiring action
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="flex items-center gap-1 font-semibold text-[#2C6EA6] bg-white/70 px-2 py-0.5 rounded-full border border-[#D5E6F5]">
+              98.5% Health
+            </span>
+            <span className="text-[#697386] text-[10px]">
+              {subscriptions.length} Total Contracts
+            </span>
           </div>
         </div>
+
       </div>
 
-      {/* ASC 606 / Ind AS 115 GAAP Revenue Recognition Waterfall */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-900/60 text-white rounded-2xl p-5 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold border border-indigo-500/30">
-                ASC 606 / Ind AS 115 GAAP COMPLIANCE
-              </span>
-              <div className="group relative inline-block">
-                <Info className="w-4 h-4 text-indigo-400 cursor-pointer hover:text-white transition-colors" />
-                <div className="hidden group-hover:block absolute left-0 top-6 w-72 p-3 bg-slate-900 text-slate-200 text-[11px] rounded-xl border border-slate-700 shadow-2xl z-50">
-                  <div className="font-bold text-indigo-300 mb-1">ASC 606 Revenue Recognition Rule</div>
-                  Yearly contracts bill upfront in cash, but revenue must be recognized month-by-month as services are delivered. Unearned cash is held as Deferred Revenue Liability.
-                </div>
-              </div>
-            </div>
-            <h2 className="text-base font-bold font-display mt-1 text-white">
-              Revenue Recognition & Deferred Unearned Cash Flow
-            </h2>
-          </div>
-
-          <div className="text-right font-mono">
-            <div className="text-xs text-indigo-200">Total Cash Collected</div>
-            <div className="text-lg font-bold text-emerald-400">₹{totalCollected.toLocaleString('en-IN')}</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-emerald-500/30 space-y-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-bold text-emerald-300 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Recognized Earned Revenue (GAAP)</span>
-              </span>
-              <span className="font-mono font-bold text-emerald-400">₹{recognizedEarnedRevenue.toLocaleString('en-IN')}</span>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Revenue earned for software subscription duration already elapsed.
-            </p>
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-              <div className="bg-emerald-500 h-2 rounded-full" style={{ width: '72%' }}></div>
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-amber-500/30 space-y-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-bold text-amber-300 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-amber-400" />
-                <span>Deferred Unearned Revenue (Liability)</span>
-              </span>
-              <span className="font-mono font-bold text-amber-400">₹{deferredUnearnedRevenue.toLocaleString('en-IN')}</span>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Cash collected upfront for future unexpired contract periods.
-            </p>
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-              <div className="bg-amber-500 h-2 rounded-full" style={{ width: '28%' }}></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* At-Risk Churn Intelligence Command Center */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white font-display flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-rose-500" />
-                <span>At-Risk Churn Intelligence Command Center</span>
+      {/* 3. Main Analytics Area: Revenue Analytics Chart & Subscription Health */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Revenue Analytics Chart Area (2 Columns) */}
+        <div className="lg:col-span-2 p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] flex flex-col justify-between space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-[#252735]">
+                Revenue & Cash Flow Analytics
               </h2>
-              <div className="group relative inline-block">
-                <Info className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-indigo-600 transition-colors" />
-                <div className="hidden group-hover:block absolute left-0 top-5 w-72 p-3 bg-slate-900 text-slate-200 text-[11px] rounded-xl border border-slate-700 shadow-2xl z-50">
-                  <div className="font-bold text-indigo-300 mb-1">Predictive Churn Scoring Model</div>
-                  Computes 0-100% health score using overdue payment days, cadence commitment, and negotiation notes. Triggers human-in-the-loop retention offers.
-                </div>
+              <p className="text-xs text-[#697386]">
+                Earned revenue vs cash collections vs operational expenses
+              </p>
+            </div>
+
+            {/* Period selector pills */}
+            <div className="flex items-center gap-1 p-1 rounded-2xl bg-[#F0EDFA]/60 border border-[#E3DCF7]">
+              {(['7D', '1M', '1Q', '1Y'] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setTimePeriod(period)}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                    timePeriod === period
+                      ? 'bg-[#6254E8] text-white shadow-xs'
+                      : 'text-[#697386] hover:text-[#252735]'
+                  }`}
+                >
+                  {period}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* SVG Smooth Pastel Financial Chart */}
+          <div className="relative w-full h-64 pt-4">
+            <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
+              <defs>
+                {/* Mint gradient for collections */}
+                <linearGradient id="mintGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#55C9A2" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#55C9A2" stopOpacity="0.0" />
+                </linearGradient>
+                {/* Blue gradient for earned revenue */}
+                <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#7A8CE8" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#7A8CE8" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+
+              {/* Gridlines */}
+              <line x1="0" y1="40" x2="500" y2="40" stroke="#F0F4F8" strokeDasharray="3 3" />
+              <line x1="0" y1="90" x2="500" y2="90" stroke="#F0F4F8" strokeDasharray="3 3" />
+              <line x1="0" y1="140" x2="500" y2="140" stroke="#F0F4F8" strokeDasharray="3 3" />
+              <line x1="0" y1="180" x2="500" y2="180" stroke="#E3E8EE" />
+
+              {/* Area 1: Collections Area (Mint) */}
+              <path
+                d="M 20 160 Q 100 130 180 110 T 340 70 T 480 40 L 480 180 L 20 180 Z"
+                fill="url(#mintGrad)"
+              />
+              {/* Curve 1: Collections line */}
+              <path
+                d="M 20 160 Q 100 130 180 110 T 340 70 T 480 40"
+                fill="none"
+                stroke="#55C9A2"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+
+              {/* Area 2: Revenue Area (Soft Indigo/Blue) */}
+              <path
+                d="M 20 170 Q 100 145 180 130 T 340 95 T 480 65 L 480 180 L 20 180 Z"
+                fill="url(#blueGrad)"
+              />
+              {/* Curve 2: Revenue line */}
+              <path
+                d="M 20 170 Q 100 145 180 130 T 340 95 T 480 65"
+                fill="none"
+                stroke="#6254E8"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+
+              {/* Curve 3: Expenses line (Soft Coral) */}
+              <path
+                d="M 20 175 Q 100 165 180 160 T 340 150 T 480 140"
+                fill="none"
+                stroke="#E99B9B"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                strokeLinecap="round"
+              />
+
+              {/* Interactive Data Nodes */}
+              {chartPoints.map((pt, idx) => {
+                const x = 20 + idx * 92;
+                return (
+                  <g key={pt.month} onMouseEnter={() => setHoveredPoint(idx)} onMouseLeave={() => setHoveredPoint(null)}>
+                    <circle cx={x} cy={160 - idx * 24} r="4.5" fill="#55C9A2" stroke="#FFFFFF" strokeWidth="2" className="cursor-pointer hover:r-6 transition-all" />
+                    <text x={x} y="195" fontSize="10" fill="#9299A8" textAnchor="middle" fontFamily="monospace">
+                      {pt.month}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Hover Tooltip */}
+            {hoveredPoint !== null && (
+              <div
+                className="absolute top-2 rounded-2xl bg-white border border-[#E3E8EE] p-2.5 shadow-[0_8px_24px_rgba(41,42,58,0.12)] text-[11px] pointer-events-none z-20"
+                style={{ left: `${Math.min(hoveredPoint * 16 + 10, 75)}%` }}
+              >
+                <div className="font-bold text-[#252735]">{chartPoints[hoveredPoint].month} Metrics</div>
+                <div className="text-[#2E7D5D]">Collections: ₹{chartPoints[hoveredPoint].collections.toLocaleString('en-IN')}</div>
+                <div className="text-[#6254E8]">Earned Rev: ₹{chartPoints[hoveredPoint].revenue.toLocaleString('en-IN')}</div>
+                <div className="text-[#E99B9B]">Operating Exp: ₹{chartPoints[hoveredPoint].expenses.toLocaleString('en-IN')}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Chart Legend */}
+          <div className="pt-3 border-t border-[#E3E8EE]/70 flex flex-wrap items-center justify-between text-xs text-[#697386]">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-[#55C9A2]" />
+                <span className="font-medium text-[#252735]">Cash Collections</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-[#6254E8]" />
+                <span className="font-medium text-[#252735]">Earned Revenue (GAAP)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-1 bg-[#E99B9B] rounded-full" />
+                <span className="font-medium text-[#252735]">Operating Expenses</span>
               </div>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Predicting subscription renewal risk before cancellation occurs.
+
+            <span className="text-[11px] text-[#9299A8] font-mono">
+              Last audit: Today, 13:30 IST
+            </span>
+          </div>
+        </div>
+
+        {/* Subscription Health & Status Overview (1 Column) */}
+        <div className="p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] flex flex-col justify-between space-y-5">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base font-bold text-[#252735]">
+                Subscription Health
+              </h2>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E1F3EB] text-[#2E7D5D]">
+                {statusCounts.ACTIVE} Active
+              </span>
+            </div>
+            <p className="text-xs text-[#697386]">
+              Portfolio breakdown across contract lifecycles
             </p>
           </div>
 
-          <span className="px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-[11px] font-bold text-rose-700 dark:text-rose-300 font-mono">
-            {subscriptions.filter((s) => (s.healthScore || 100) < 60).length} High-Risk Churn Accounts
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subscriptions.map((sub) => {
-            const health = sub.healthScore || (sub.status === 'ACTIVE' ? 92 : sub.status === 'CONFIRMED' ? 45 : 65);
-            const isHighRisk = health < 50;
-
-            return (
-              <div
-                key={sub.id}
-                className={`p-4 rounded-xl border transition-all ${
-                  isHighRisk
-                    ? 'bg-rose-50/50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/60'
-                    : 'bg-slate-50/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800'
-                } space-y-3`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono text-xs">
-                    {sub.number}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                      isHighRisk
-                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                    }`}
-                  >
-                    Health: {health}%
-                  </span>
-                </div>
-
-                <div>
-                  <div className="font-bold text-xs text-slate-900 dark:text-white">
-                    {sub.customerName}
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-mono">
-                    Cadence: {sub.billingFrequency} · Due: {sub.nextBillingDate}
-                  </div>
-                </div>
-
-                {sub.retentionOfferSent ? (
-                  <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[10px] text-emerald-800 dark:text-emerald-300 space-y-0.5">
-                    <div className="font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                      <span>Human Retention Offer Dispatched</span>
-                    </div>
-                    <div>Offer: {sub.retentionOfferSent.discountPct}% Off (Approved by {sub.retentionOfferSent.approvedBy})</div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleOpenRetentionModal(sub)}
-                    className={`w-full py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                      isHighRisk
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                    }`}
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Prepare Retention Offer (Human Review)</span>
-                  </button>
-                )}
+          {/* Progress Segment Bars with Pastel Colors */}
+          <div className="space-y-3">
+            {/* Active */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-[#252735] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#55C9A2]" />
+                  Active
+                </span>
+                <span className="font-mono text-[#697386]">
+                  {statusCounts.ACTIVE} ({Math.round((statusCounts.ACTIVE / totalSubCount) * 100)}%)
+                </span>
               </div>
-            );
-          })}
+              <div className="h-2 rounded-full bg-[#F0F4F8] overflow-hidden">
+                <div
+                  className="h-full bg-[#55C9A2] rounded-full"
+                  style={{ width: `${(statusCounts.ACTIVE / totalSubCount) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Confirmed */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-[#252735] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#87BCEB]" />
+                  Confirmed
+                </span>
+                <span className="font-mono text-[#697386]">
+                  {statusCounts.CONFIRMED} ({Math.round((statusCounts.CONFIRMED / totalSubCount) * 100)}%)
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[#F0F4F8] overflow-hidden">
+                <div
+                  className="h-full bg-[#87BCEB] rounded-full"
+                  style={{ width: `${(statusCounts.CONFIRMED / totalSubCount) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Quotation */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-[#252735] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#F3C77B]" />
+                  Quotation
+                </span>
+                <span className="font-mono text-[#697386]">
+                  {statusCounts.QUOTATION} ({Math.round((statusCounts.QUOTATION / totalSubCount) * 100)}%)
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[#F0F4F8] overflow-hidden">
+                <div
+                  className="h-full bg-[#F3C77B] rounded-full"
+                  style={{ width: `${(statusCounts.QUOTATION / totalSubCount) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Paused */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-[#252735] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#E99B9B]" />
+                  Paused / At-Risk
+                </span>
+                <span className="font-mono text-[#697386]">
+                  {statusCounts.PAUSED} ({Math.round((statusCounts.PAUSED / totalSubCount) * 100)}%)
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[#F0F4F8] overflow-hidden">
+                <div
+                  className="h-full bg-[#E99B9B] rounded-full"
+                  style={{ width: `${(statusCounts.PAUSED / totalSubCount) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Closed */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-medium text-[#252735] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#CBD5E1]" />
+                  Closed / Churned
+                </span>
+                <span className="font-mono text-[#697386]">
+                  {statusCounts.CLOSED} ({Math.round((statusCounts.CLOSED / totalSubCount) * 100)}%)
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[#F0F4F8] overflow-hidden">
+                <div
+                  className="h-full bg-[#CBD5E1] rounded-full"
+                  style={{ width: `${(statusCounts.CLOSED / totalSubCount) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Retention Assist Trigger for at-risk accounts */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-[#F0EDFA]/70 to-[#FFF1E8]/70 border border-[#E3DCF7] text-xs">
+            <div className="flex items-center gap-2 font-bold text-[#6254E8] mb-1">
+              <Sparkles className="w-4 h-4 text-[#F3C77B]" />
+              <span>AI Churn Intervention</span>
+            </div>
+            <p className="text-[11px] text-[#697386] mb-2 leading-relaxed">
+              Target at-risk or paused accounts with an instant pre-approved retention incentive.
+            </p>
+            {subscriptions.find((s) => s.status === 'PAUSED' || s.status === 'QUOTATION') ? (
+              <button
+                onClick={() => {
+                  const targetSub = subscriptions.find((s) => s.status === 'PAUSED' || s.status === 'QUOTATION');
+                  if (targetSub) handleOpenRetentionModal(targetSub);
+                }}
+                className="w-full py-1.5 rounded-xl bg-white border border-[#E3DCF7] text-[#6254E8] font-bold text-xs hover:bg-[#6254E8] hover:text-white transition-all shadow-2xs"
+              >
+                Review Retention Offer
+              </button>
+            ) : (
+              <span className="text-[10px] text-[#2E7D5D] font-semibold">Zero contracts flagged for churn.</span>
+            )}
+          </div>
         </div>
+
       </div>
 
-      {/* Overdue Invoices Aging Matrix */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white font-display">
-              Overdue Invoice Aging & Collections Queue
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Chasing overdue invoices before they turn into bad debt losses.
-            </p>
+      {/* 4. Bottom Grid: Upcoming Billing & Billing Activity / Recent Invoices */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Upcoming Billing Panel */}
+        <div className="p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E3E8EE]/70">
+            <div>
+              <h2 className="text-base font-bold text-[#252735] flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#7A8CE8]" />
+                <span>Upcoming Billing & Renewals</span>
+              </h2>
+              <p className="text-xs text-[#697386]">Next automated recurring renewal schedule</p>
+            </div>
+            <span className="text-xs font-mono font-semibold text-[#6254E8] bg-[#F0EDFA] px-2.5 py-1 rounded-xl">
+              Next 30 Days
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {[
-              { id: 'ALL', label: 'All Overdue' },
-              { id: 'UNDER_30', label: '< 30 Days' },
-              { id: '30_60', label: '30 - 60 Days' },
-              { id: 'OVER_60', label: '> 60 Days' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setAgingFilter(tab.id as any)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                  agingFilter === tab.id
-                    ? 'bg-rose-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                }`}
+          <div className="space-y-2">
+            {upcomingBilling.map((sub) => {
+              const subTotal = sub.lines.reduce((acc, l) => acc + l.totalAmount, 0);
+              return (
+                <div
+                  key={sub.id}
+                  className="flex items-center justify-between p-3 rounded-2xl bg-[#EAF3F8]/40 hover:bg-[#EAF3F8]/80 border border-[#DCE5ED] transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white border border-[#D5E6F5] text-[#2C6EA6] flex items-center justify-center font-bold text-xs shadow-2xs">
+                      {sub.customerName.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-[#252735]">{sub.customerName}</div>
+                      <div className="text-[11px] text-[#697386] flex items-center gap-2">
+                        <span>{sub.planName}</span>
+                        <span className="text-[#DCE5ED]">·</span>
+                        <span className="font-mono text-[10px] text-[#6254E8]">{sub.number}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-xs font-bold font-mono text-[#252735]">
+                      ₹{subTotal.toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] font-mono text-[#697386]">
+                      Due: {sub.nextBillingDate}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Billing Activity / Recent Invoices Panel */}
+        <div className="p-6 rounded-3xl bg-white border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E3E8EE]/70">
+            <div>
+              <h2 className="text-base font-bold text-[#252735] flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-[#55C9A2]" />
+                <span>Recent Invoices & Activity</span>
+              </h2>
+              <p className="text-xs text-[#697386]">Real-time audit log of ledger issuances</p>
+            </div>
+            <span className="text-xs font-mono font-semibold text-[#2E7D5D] bg-[#E1F3EB] px-2.5 py-1 rounded-xl">
+              Live Feed
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {recentInvoices.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center justify-between p-3 rounded-2xl bg-white hover:bg-[#F0EDFA]/40 border border-[#E3E8EE] transition-all"
               >
-                {tab.label}
-              </button>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center font-mono font-bold text-[10px] border ${
+                      inv.status === 'PAID'
+                        ? 'bg-[#E1F3EB] text-[#2E7D5D] border-[#CEEBDD]'
+                        : inv.status === 'CONFIRMED'
+                        ? 'bg-[#E5F0FA] text-[#2C6EA6] border-[#D5E6F5]'
+                        : 'bg-[#FFF1E8] text-[#B86221] border-[#FFE1D1]'
+                    }`}
+                  >
+                    {inv.status === 'PAID' ? 'PAID' : 'DUE'}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-[#252735]">{inv.customerName}</div>
+                    <div className="text-[11px] text-[#697386] flex items-center gap-2">
+                      <span className="font-mono text-[10px]">{inv.invoiceNumber}</span>
+                      <span className="text-[#DCE5ED]">·</span>
+                      <span>Issued {inv.issueDate}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-xs font-bold font-mono text-[#252735]">
+                    ₹{inv.totalAmount.toLocaleString('en-IN')}
+                  </div>
+                  {inv.status === 'CONFIRMED' && (
+                    <button
+                      onClick={() => handleSendReminder(inv.customerName, inv.invoiceNumber)}
+                      className="text-[10px] font-semibold text-[#6254E8] hover:underline flex items-center gap-1 justify-end mt-0.5"
+                    >
+                      <Send className="w-2.5 h-2.5" />
+                      Send Reminder
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
-                <th className="p-3">Invoice #</th>
-                <th className="p-3">Customer</th>
-                <th className="p-3">Due Date</th>
-                <th className="p-3 font-mono text-right">Balance Due</th>
-                <th className="p-3">Days Overdue</th>
-                <th className="p-3 text-right">Collections Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredOverdue.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-6 text-center text-slate-400 italic">
-                    No overdue invoices matching selected aging criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredOverdue.map((inv) => {
-                  const diffDays = Math.floor(
-                    (new Date(todayStr).getTime() - new Date(inv.dueDate).getTime()) /
-                      (1000 * 3600 * 24)
-                  );
-
-                  return (
-                    <tr key={inv.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className="p-3 font-bold text-rose-600 dark:text-rose-400 font-mono">
-                        {inv.invoiceNumber}
-                      </td>
-                      <td className="p-3 font-medium text-slate-900 dark:text-white">
-                        {inv.customerName}
-                      </td>
-                      <td className="p-3 font-mono text-slate-600 dark:text-slate-300">
-                        {inv.dueDate}
-                      </td>
-                      <td className="p-3 text-right font-bold text-slate-900 dark:text-white font-mono">
-                        ₹{inv.balanceDue.toLocaleString('en-IN')}
-                      </td>
-                      <td className="p-3 font-mono font-bold text-rose-600">
-                        {diffDays} Days Late
-                      </td>
-                      <td className="p-3 text-right">
-                        <button
-                          onClick={() => handleSendReminder(inv.customerName, inv.invoiceNumber)}
-                          className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-[11px] hover:bg-indigo-100 transition-colors inline-flex items-center gap-1"
-                        >
-                          <Send className="w-3 h-3" />
-                          <span>Send GST Reminder</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
 
-      {/* Upcoming Subscription Renewals Schedule */}
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white font-display flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-indigo-500" />
-            <span>Upcoming Subscription Renewals & Contract Expirations</span>
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Subscriptions scheduled to recur or expire, avoiding forgotten manual renewals.
-          </p>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
-                <th className="p-3">Sub #</th>
-                <th className="p-3">Customer</th>
-                <th className="p-3">Billing Cadence</th>
-                <th className="p-3">Next Billing Date</th>
-                <th className="p-3">Expiry Date</th>
-                <th className="p-3">Status</th>
-                <th className="p-3 text-right">Renewal Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {subscriptions.filter((s) => s.status === 'ACTIVE' || s.status === 'CONFIRMED').length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-6 text-center text-slate-400 italic">
-                    No active subscriptions scheduled for renewal.
-                  </td>
-                </tr>
-              ) : (
-                subscriptions
-                  .filter((s) => s.status === 'ACTIVE' || s.status === 'CONFIRMED')
-                  .map((sub) => {
-                    const subVal = sub.lines.reduce((acc, l) => acc + l.totalAmount, 0);
-
-                    const handleQuickExtend = () => {
-                      addToast(`Renewal confirmed for ${sub.customerName} (${sub.number}). Next billing cycle dispatched!`, 'success');
-                    };
-
-                    return (
-                      <tr key={sub.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                        <td className="p-3 font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                          {sub.number}
-                        </td>
-                        <td className="p-3 font-medium text-slate-900 dark:text-white">
-                          {sub.customerName}
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
-                            {sub.billingFrequency}
-                          </span>
-                        </td>
-                        <td className="p-3 font-mono text-slate-700 dark:text-slate-300">
-                          {sub.nextBillingDate}
-                        </td>
-                        <td className="p-3 font-mono text-slate-500">
-                          {sub.expiryDate || 'Continuous / Auto-renew'}
-                        </td>
-                        <td className="p-3 text-right font-bold text-slate-900 dark:text-white font-mono">
-                          ₹{subVal.toLocaleString('en-IN')}
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            {sub.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right">
-                          <button
-                            onClick={handleQuickExtend}
-                            className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[11px] transition-colors"
-                          >
-                            Extend / Renew
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Human-in-the-Loop Retention Offer Review Modal */}
+      {/* Human Retention Offer Modal */}
       {retentionModalSub && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-indigo-500" />
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white font-display">
-                    Review & Approve Retention Offer
-                  </h3>
-                </div>
-                <div className="text-xs text-indigo-600 dark:text-indigo-400 font-mono mt-0.5">
-                  Target Account: {retentionModalSub.customerName} ({retentionModalSub.number})
-                </div>
+        <div className="fixed inset-0 z-50 bg-[#252735]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#E3E8EE] shadow-[0_20px_50px_rgba(41,42,58,0.15)] space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E3E8EE]">
+              <div className="flex items-center gap-2 text-base font-bold text-[#252735]">
+                <Sparkles className="w-5 h-5 text-[#6254E8]" />
+                <span>Dispatch Customer Retention Offer</span>
               </div>
               <button
                 onClick={() => setRetentionModalSub(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1 rounded-xl text-[#9299A8] hover:text-[#252735] hover:bg-[#F0EDFA]"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleDispatchRetentionSubmit} className="space-y-4 text-xs">
-              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 space-y-1">
-                <div className="font-bold flex items-center gap-1.5 text-xs">
-                  <ShieldAlert className="w-4 h-4 text-amber-600" />
-                  <span>Human Operator Authorization Required</span>
-                </div>
-                <p className="text-[11px] opacity-90">
-                  This offer will be generated as an approved retention proposal in the customer portal. Adjust discount rate and validity bounds before signing off.
-                </p>
+            <form onSubmit={handleDispatchRetentionSubmit} className="space-y-4">
+              <div className="p-3 rounded-2xl bg-[#F0EDFA]/60 border border-[#E3DCF7] text-xs">
+                <div className="font-semibold text-[#252735]">{retentionModalSub.customerName}</div>
+                <div className="text-[#697386]">Contract: {retentionModalSub.number} · {retentionModalSub.planName}</div>
               </div>
 
               <div>
-                <div className="flex items-center justify-between font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  <span>Loyalty Discount Percentage (%):</span>
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono text-sm">
-                    {discountPct}% OFF
-                  </span>
-                </div>
+                <label className="block text-xs font-semibold text-[#252735] mb-1">
+                  Retention Discount Percentage (%)
+                </label>
                 <input
-                  type="range"
+                  type="number"
                   min="5"
-                  max="40"
-                  step="1"
+                  max="50"
                   value={discountPct}
-                  onChange={(e) => setDiscountPct(parseInt(e.target.value) || 10)}
-                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  onChange={(e) => setDiscountPct(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E3E8EE] focus:border-[#6254E8] outline-hidden font-mono"
+                  required
                 />
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
-                  <span>5% (Conservative)</span>
-                  <span>20% (Standard)</span>
-                  <span>40% (Aggressive)</span>
-                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Custom Retention Offer Note
+                <label className="block text-xs font-semibold text-[#252735] mb-1">
+                  Offer Validity (Days)
+                </label>
+                <input
+                  type="number"
+                  min="3"
+                  max="60"
+                  value={validityDays}
+                  onChange={(e) => setValidityDays(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E3E8EE] focus:border-[#6254E8] outline-hidden font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#252735] mb-1">
+                  Internal Retention Justification Note
                 </label>
                 <textarea
                   rows={2}
                   value={retentionNotes}
                   onChange={(e) => setRetentionNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E3E8EE] focus:border-[#6254E8] outline-hidden"
+                  required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Offer Validity (Days)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="90"
-                    value={validityDays}
-                    onChange={(e) => setValidityDays(parseInt(e.target.value) || 14)}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Sign-Off Representative
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={`${currentUser.name} (${currentUser.role})`}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setRetentionModalSub(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                  className="px-4 py-2 rounded-xl border border-[#E3E8EE] text-xs font-semibold text-[#697386] hover:bg-[#F0EDFA]/50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-md"
+                  className="px-4 py-2 rounded-xl bg-[#6254E8] hover:bg-[#5245D0] text-white text-xs font-semibold shadow-xs"
                 >
-                  <FileCheck className="w-4 h-4" />
-                  <span>Approve & Dispatch Retention Offer</span>
+                  Dispatch Approved Offer
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 };

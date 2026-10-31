@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useNavigate } from '../router/Router';
 import {
   Zap,
   Calendar,
   CheckCircle2,
-  ShieldAlert,
+  ShieldCheck,
   FileSpreadsheet,
   ArrowRight,
   Receipt,
-  Layers
+  Layers,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 
 export const BillingEngineView: React.FC = () => {
-  const { subscriptions, invoices, triggerBillingDayRun, setActiveView } = useApp();
+  const { subscriptions, invoices, triggerBillingDayRun, authenticatedUser } = useApp();
+  const navigate = useNavigate();
 
   const [targetDate, setTargetDate] = useState(new Date().toISOString().split('T')[0]);
   const [executionResult, setExecutionResult] = useState<{ createdCount: number; skippedCount: number } | null>(null);
@@ -25,74 +29,87 @@ export const BillingEngineView: React.FC = () => {
     setExecutionResult(res);
   };
 
+  const handleNavigateInvoices = () => {
+    if (authenticatedUser.role === 'ADMIN') navigate('/admin/invoices');
+    else navigate('/finance/invoices');
+  };
+
   return (
     <div className="space-y-6">
+      
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-display flex items-center gap-2">
-          <Zap className="w-5 h-5 text-amber-500" />
-          <span>Automated Bulk Billing Engine</span>
+        <h1 className="text-2xl font-extrabold tracking-tight text-[#252735]">
+          Bulk Billing Engine
         </h1>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Scan active recurring subscriptions due on or before billing day, enforce idempotency locks, compute 18% GST, and issue draft/confirmed invoices.
+        <p className="text-xs text-[#697386] mt-0.5">
+          Scan active recurring subscriptions due on billing day, enforce idempotency SHA locks, compute 18% GST, and issue invoices.
         </p>
       </div>
 
-      {/* Main Execution Control Box */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-xl space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Main Execution Control Box (Pastel Mint/Lavender Gradient) */}
+      <div className="bg-gradient-to-r from-[#E1F3EB]/90 via-[#EAF3F8] to-[#F0EDFA]/90 rounded-3xl p-6 border border-[#CEEBDD] shadow-[0_10px_30px_rgba(85,201,162,0.06)] space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div>
-            <span className="text-xs font-bold px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
-              Idempotent Engine v2.4
-            </span>
-            <h2 className="text-lg font-bold mt-2 font-display">
-              Run Billing Cycle Execution
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white text-[#2E7D5D] border border-[#CEEBDD] font-mono">
+                Idempotency Engine v2.4
+              </span>
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white text-[#6254E8] border border-[#E3DCF7]">
+                Live Batch Processing
+              </span>
+            </div>
+            <h2 className="text-lg font-bold text-[#252735] mt-2">
+              Execute Automated Billing Run
             </h2>
-            <p className="text-xs text-slate-300 max-w-xl mt-1">
-              Guarantees zero double-billing by generating unique hash locks (<code className="bg-slate-800 px-1 py-0.5 rounded font-mono text-amber-300">SUB_ID + PERIOD_START_DATE</code>).
+            <p className="text-xs text-[#697386] max-w-xl mt-0.5 leading-relaxed">
+              Guarantees zero duplicate billing using unique idempotency lock hashes (<code className="bg-white/80 px-1.5 py-0.5 rounded text-[#6254E8] font-mono text-[10px] border border-[#E3DCF7]">SUB_ID + PERIOD_START</code>).
             </p>
           </div>
 
-          <div className="flex items-center gap-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700/80">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white/80 p-3 rounded-2xl border border-[#DCE5ED] shadow-2xs">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                Target Billing Date
+              <label className="block text-[10px] font-bold text-[#9299A8] uppercase tracking-wider mb-1">
+                Target Billing Cutoff Date
               </label>
               <input
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                className="bg-white border border-[#E3E8EE] rounded-xl px-3 py-1.5 text-xs text-[#252735] font-mono outline-hidden focus:border-[#6254E8]"
               />
             </div>
             <button
               onClick={handleRunBillingEngine}
-              className="mt-4 sm:mt-0 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all active:scale-[0.98] flex items-center gap-2"
+              className="mt-2 sm:mt-4 px-5 py-2.5 rounded-xl bg-[#6254E8] hover:bg-[#5245D0] active:scale-[0.98] text-white font-bold text-xs shadow-[0_4px_14px_rgba(98,84,232,0.3)] transition-all flex items-center justify-center gap-2"
             >
-              <Zap className="w-4 h-4 text-slate-950 fill-current" />
+              <Zap className="w-4 h-4 text-[#F3C77B]" />
               <span>Execute Billing Run</span>
             </button>
           </div>
         </div>
 
+        {/* Execution Result Banner */}
         {executionResult && (
-          <div className="p-4 rounded-xl bg-slate-800/90 border border-slate-700 flex items-center justify-between text-xs animate-in fade-in">
+          <div className="p-4 rounded-2xl bg-white border border-[#CEEBDD] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs animate-in fade-in">
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <div className="w-8 h-8 rounded-xl bg-[#E1F3EB] text-[#2E7D5D] flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
               <div>
-                <div className="font-bold text-white">Billing Run Execution Completed!</div>
-                <div className="text-slate-300">
-                  Issued <span className="font-bold text-emerald-400">{executionResult.createdCount}</span> new GST tax invoices.{' '}
+                <div className="font-bold text-[#252735]">Billing Run Execution Completed Successfully!</div>
+                <div className="text-[#697386]">
+                  Issued <strong className="text-[#2E7D5D]">{executionResult.createdCount}</strong> new GST tax invoices.{' '}
                   {executionResult.skippedCount > 0 && (
-                    <span>({executionResult.skippedCount} skipped by idempotency check)</span>
+                    <span>({executionResult.skippedCount} skipped by SHA idempotency lock)</span>
                   )}
                 </div>
               </div>
             </div>
 
             <button
-              onClick={() => setActiveView('invoices')}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold flex items-center gap-1 hover:bg-indigo-500"
+              onClick={handleNavigateInvoices}
+              className="px-4 py-2 rounded-xl bg-[#6254E8] text-white font-semibold text-xs flex items-center gap-1.5 hover:bg-[#5245D0] shadow-xs shrink-0"
             >
               <span>View Invoices Ledger</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -101,30 +118,30 @@ export const BillingEngineView: React.FC = () => {
         )}
       </div>
 
-      {/* Due Subscriptions Summary */}
+      {/* Due Subscriptions Queue Table */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-          <span>Subscriptions Due for Billing on/before {targetDate} ({dueSubs.length})</span>
-          <span>Total Active: {activeSubs.length}</span>
+        <div className="flex items-center justify-between text-xs font-bold text-[#697386] uppercase tracking-wider px-1">
+          <span>Subscriptions Due on or before {targetDate} ({dueSubs.length})</span>
+          <span>Active Contracts: {activeSubs.length}</span>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+        <div className="bg-white rounded-3xl border border-[#E3E8EE] shadow-[0_10px_30px_rgba(41,42,58,0.03)] overflow-hidden">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
-                <th className="p-3">Sub Number</th>
-                <th className="p-3">Customer</th>
-                <th className="p-3">Plan</th>
-                <th className="p-3">Next Billing Date</th>
-                <th className="p-3">Estimated Total (incl. 18% GST)</th>
-                <th className="p-3">Idempotency Lock Status</th>
+              <tr className="bg-[#F0EDFA]/40 font-bold text-[#697386] uppercase tracking-wider text-[11px] border-b border-[#E3E8EE]">
+                <th className="py-3.5 px-5">Sub Number</th>
+                <th className="py-3.5 px-5">Customer</th>
+                <th className="py-3.5 px-5">Plan</th>
+                <th className="py-3.5 px-5">Next Billing</th>
+                <th className="py-3.5 px-5 text-right">Estimated Amount (incl. 18% GST)</th>
+                <th className="py-3.5 px-5">Idempotency Lock Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+            <tbody className="divide-y divide-[#E3E8EE]/70">
               {dueSubs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-slate-400 italic">
-                    No active subscriptions due on or before selected billing date.
+                  <td colSpan={6} className="py-12 text-center text-[#9299A8]">
+                    No active subscriptions due on or before selected billing cutoff date.
                   </td>
                 </tr>
               ) : (
@@ -136,27 +153,27 @@ export const BillingEngineView: React.FC = () => {
                   const alreadyBilled = invoices.some((i) => i.idempotencyKey === key);
 
                   return (
-                    <tr key={sub.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className="p-3 font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                    <tr key={sub.id} className="hover:bg-[#F0EDFA]/30 transition-colors">
+                      <td className="py-3.5 px-5 font-bold text-[#6254E8] font-mono">
                         {sub.number}
                       </td>
-                      <td className="p-3 font-medium text-slate-900 dark:text-white">
+                      <td className="py-3.5 px-5 font-semibold text-[#252735]">
                         {sub.customerName}
                       </td>
-                      <td className="p-3 text-slate-600 dark:text-slate-300">{sub.planName}</td>
-                      <td className="p-3 font-mono text-slate-600 dark:text-slate-300">
+                      <td className="py-3.5 px-5 text-[#697386]">{sub.planName}</td>
+                      <td className="py-3.5 px-5 font-mono text-[#697386]">
                         {sub.nextBillingDate}
                       </td>
-                      <td className="p-3 font-bold text-slate-900 dark:text-emerald-400 font-mono">
-                        ₹{estTotal.toLocaleString('en-IN')}
+                      <td className="py-3.5 px-5 text-right font-bold text-[#252735] font-mono tabular-nums">
+                        ₹{estTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </td>
-                      <td className="p-3">
+                      <td className="py-3.5 px-5">
                         {alreadyBilled ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#FFF1E8] text-[#B86221] border border-[#FFE1D1]">
                             Already Billed (Skipped)
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#E1F3EB] text-[#2E7D5D] border border-[#CEEBDD]">
                             Ready for Invoice Run
                           </span>
                         )}
@@ -169,6 +186,7 @@ export const BillingEngineView: React.FC = () => {
           </table>
         </div>
       </div>
+
     </div>
   );
 };

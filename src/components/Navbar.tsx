@@ -11,7 +11,8 @@ import {
   PieChart,
   LogOut,
   User as UserIcon,
-  ChevronDown
+  ChevronDown,
+  Home
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,7 +26,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
     currentUser,
     switchRole,
     triggerBillingDayRun,
-    setActiveView
+    setActiveView,
+    logout,
+    setScreenMode
   } = useApp();
 
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -67,7 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-500 flex items-center justify-center text-white font-bold text-lg shadow-xs">
             B
           </div>
           <div>
@@ -84,6 +87,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
 
         {/* Zone 2: Navigation Controls & Fast Role Switcher */}
         <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => setScreenMode('LANDING')}
+            className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            title="Go to Company Landing Page"
+          >
+            <Home className="w-4 h-4" />
+          </button>
+
           {/* Fast Role Switcher */}
           <div className="relative">
             <button
@@ -139,13 +150,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-400" />}
           </button>
 
-          {/* User Account / Auth Trigger */}
+          {/* User Account & Logout */}
           <button
-            onClick={onOpenAuthModal}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
+            onClick={logout}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium text-rose-600 dark:text-rose-400 transition-colors"
+            title="Sign Out"
           >
-            <UserIcon className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden md:inline max-w-[120px] truncate">{currentUser.name}</span>
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
 
@@ -153,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
         <div className="shrink-0 hidden lg:block">
           <button
             onClick={handleTriggerBilling}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-xs font-semibold shadow-sm transition-all active:scale-[0.98]"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.98]"
           >
             <Zap className="w-4 h-4 text-amber-300" />
             <span>Trigger Billing Day</span>

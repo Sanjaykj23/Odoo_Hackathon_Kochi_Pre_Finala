@@ -10,6 +10,8 @@ import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
 import { AuthModal } from './components/AuthModal';
 import { AccessRestricted } from './components/AccessRestricted';
+import { LandingPage } from './components/LandingPage';
+import { LoginPage } from './components/LoginPage';
 
 import { KanbanBoard } from './components/KanbanBoard';
 import { SubscriptionList } from './components/SubscriptionList';
@@ -102,10 +104,34 @@ const MainContent: React.FC = () => {
   );
 };
 
+const AppContainer: React.FC = () => {
+  const { screenMode } = useApp();
+
+  if (screenMode === 'LANDING') {
+    return (
+      <>
+        <LandingPage />
+        <ToastContainer />
+      </>
+    );
+  }
+
+  if (screenMode === 'LOGIN') {
+    return (
+      <>
+        <LoginPage />
+        <ToastContainer />
+      </>
+    );
+  }
+
+  return <MainContent />;
+};
+
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      <AppContainer />
     </AppProvider>
   );
 }

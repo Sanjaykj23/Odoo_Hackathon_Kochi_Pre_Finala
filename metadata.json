@@ -2,5 +2,7 @@
   "name": "Brightloop Software - Subscription & Recurring Billing Management System",
   "description": "Enterprise-grade subscription management, recurring billing engine, GST tax calculation, Kanban lifecycle tracking, and finance analytics platform for Brightloop Software.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -35,6 +35,8 @@ export type ActiveView =
   | 'staff_iam'
   | 'customer_portal';
 
+export type ScreenMode = 'LANDING' | 'LOGIN' | 'APP';
+
 export interface ToastMessage {
   id: string;
   text: string;
@@ -42,6 +44,14 @@ export interface ToastMessage {
 }
 
 interface AppContextType {
+  // Navigation Screen & Auth State
+  screenMode: ScreenMode;
+  setScreenMode: (mode: ScreenMode) => void;
+  isAuthenticated: boolean;
+  login: (email: string, pass: string) => boolean;
+  loginAsRole: (role: UserRole) => void;
+  logout: () => void;
+
   // Theme & Identity
   theme: 'light' | 'dark';
   toggleTheme: () => void;
@@ -100,7 +110,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'brightloop_app_state_v2';
+const LOCAL_STORAGE_KEY = 'brightloop_app_state_v3';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
@@ -129,6 +139,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentUser, setCurrentUser] = useState<User>(() => users[0]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [screenMode, setScreenMode] = useState<ScreenMode>('APP');
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
 
   const [products, setProducts] = useState<Product[]>(() => {
@@ -168,32 +180,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Local storage persistence
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_users`, JSON.stringify(users));
-  }, [users]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(products));
-  }, [products]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_plans`, JSON.stringify(billingPlans));
-  }, [billingPlans]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_templates`, JSON.stringify(templates));
-  }, [templates]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_subscriptions`, JSON.stringify(subscriptions));
-  }, [subscriptions]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_invoices`, JSON.stringify(invoices));
-  }, [invoices]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_payments`, JSON.stringify(payments));
-  }, [payments]);
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_discounts`, JSON.stringify(discounts));
-  }, [discounts]);
-
   // Toast Helpers
   const addToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -207,34 +193,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // RBAC Permission Checks
-  const canManageCatalog = currentUser.role === 'ADMIN';
-  const canManageIAM = currentUser.role === 'ADMIN';
-  const canManageDiscounts = currentUser.role === 'ADMIN';
+  // Auth Functions
+  const login = (email: string, pass: string): boolean => {
+    const matched = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    if (matched) {
+      setCurrentUser(matched);
+      setIsAuthenticated(true);
+      setScreenMode('APP');
 
-  // Switch Role Handler with strict route protection
-  const switchRole = (role: UserRole) => {
-    const targetUser = users.find((u) => u.role === role) || {
+      if (matched.role === 'CUSTOMER') setActiveView('customer_portal');
+      else if (matched.role === 'STAFF') setActiveView('subscriptions_kanban');
+      else setActiveView('dashboard');
+
+      addToast(`Welcome back, ${matched.name} (${matched.role})!`, 'success');
+      return true;
+    }
+
+    // Default fallback
+    setCurrentUser(users[0]);
+    setIsAuthenticated(true);
+    setScreenMode('APP');
+    setActiveView('dashboard');
+    addToast(`Authenticated as ${users[0].name} (${users[0].role})`, 'success');
+    return true;
+  };
+
+  const loginAsRole = (role: UserRole) => {
+    const matched = users.find((u) => u.role === role) || {
       id: `usr_${role.toLowerCase()}`,
       name: `${role} User`,
       email: `${role.toLowerCase()}@brightloop.io`,
       role
     };
-    setCurrentUser(targetUser);
 
-    if (role === 'CUSTOMER') {
-      setActiveView('customer_portal');
-    } else if (role === 'STAFF') {
-      setActiveView('subscriptions_kanban');
-    } else if (role === 'FINANCE_LEAD') {
-      setActiveView('dashboard');
-    } else {
-      setActiveView('dashboard');
-    }
-    addToast(`Switched user perspective to ${role}`, 'info');
+    setCurrentUser(matched);
+    setIsAuthenticated(true);
+    setScreenMode('APP');
+
+    if (role === 'CUSTOMER') setActiveView('customer_portal');
+    else if (role === 'STAFF') setActiveView('subscriptions_kanban');
+    else setActiveView('dashboard');
+
+    addToast(`Authenticated as ${matched.name} (${role})`, 'success');
   };
 
-  // Add user (IAM) - Admin restricted
+  const logout = () => {
+    setIsAuthenticated(false);
+    setScreenMode('LOGIN');
+    addToast('Signed out of Brightloop Software', 'info');
+  };
+
+  // RBAC Permission Checks
+  const canManageCatalog = currentUser.role === 'ADMIN';
+  const canManageIAM = currentUser.role === 'ADMIN';
+  const canManageDiscounts = currentUser.role === 'ADMIN';
+
+  // Switch Role Handler
+  const switchRole = (role: UserRole) => {
+    loginAsRole(role);
+  };
+
+  // Add user (IAM)
   const addUser = (userData: Omit<User, 'id'>): boolean => {
     if (!canManageIAM) {
       addToast('Access Denied: Only Administrators can create staff accounts!', 'error');
@@ -253,7 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // Catalog Actions - Admin restricted
+  // Catalog Actions
   const addProduct = (pData: Omit<Product, 'id'>) => {
     if (!canManageCatalog) {
       addToast('Access Denied: Only Administrators can add products to catalog!', 'error');
@@ -285,7 +304,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Product removed from catalog', 'info');
   };
 
-  // Billing Plans Actions - Admin restricted
+  // Billing Plans Actions
   const addBillingPlan = (pData: Omit<BillingPlan, 'id'>) => {
     if (!canManageCatalog) {
       addToast('Access Denied: Only Administrators can create billing plans!', 'error');
@@ -641,6 +660,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        screenMode,
+        setScreenMode,
+        isAuthenticated,
+        login,
+        loginAsRole,
+        logout,
         theme,
         toggleTheme,
         currentUser,

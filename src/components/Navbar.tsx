@@ -12,7 +12,8 @@ import {
   LogOut,
   User as UserIcon,
   ChevronDown,
-  Home
+  Home,
+  Lock
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -23,12 +24,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
   const {
     theme,
     toggleTheme,
+    authenticatedUser,
     currentUser,
     switchRole,
     triggerBillingDayRun,
     setActiveView,
     logout,
-    setScreenMode
+    setScreenMode,
+    addToast
   } = useApp();
 
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -112,31 +115,62 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
 
             {roleMenuOpen && (
               <div className="absolute right-0 mt-2 w-72 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-3 py-2 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 mb-1">
+                  <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Authenticated Session:
+                  </div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono flex items-center justify-between">
+                    <span>{authenticatedUser.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 font-bold">
+                      {authenticatedUser.role}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                   Select Perspective / Persona
                 </div>
-                {roles.map((r) => (
-                  <button
-                    key={r.role}
-                    onClick={() => {
-                      switchRole(r.role);
-                      setRoleMenuOpen(false);
-                    }}
-                    className={`w-full text-left flex items-start gap-3 p-2.5 rounded-lg transition-colors ${
-                      currentUser.role === r.role
-                        ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-100 font-medium'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    <div className="mt-0.5">{r.icon}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold">{r.label}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        {r.desc}
+
+                {roles.map((r) => {
+                  const isRestricted =
+                    (authenticatedUser.role !== 'ADMIN' && r.role === 'ADMIN') ||
+                    (authenticatedUser.role === 'STAFF' && r.role === 'FINANCE_LEAD') ||
+                    (authenticatedUser.role === 'CUSTOMER' && r.role !== 'CUSTOMER');
+
+                  return (
+                    <button
+                      key={r.role}
+                      disabled={isRestricted}
+                      onClick={() => {
+                        const success = switchRole(r.role);
+                        if (success) setRoleMenuOpen(false);
+                      }}
+                      className={`w-full text-left flex items-start gap-3 p-2.5 rounded-lg transition-colors ${
+                        isRestricted
+                          ? 'opacity-40 cursor-not-allowed bg-slate-50 dark:bg-slate-950'
+                          : currentUser.role === r.role
+                          ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-100 font-medium'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="mt-0.5">{r.icon}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold flex items-center justify-between">
+                          <span>{r.label}</span>
+                          {isRestricted && (
+                            <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-rose-500">
+                              <Lock className="w-3 h-3" />
+                              <span>Restricted</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {r.desc}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

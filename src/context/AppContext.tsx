@@ -55,9 +55,10 @@ interface AppContextType {
   // Theme & Identity
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  authenticatedUser: User;
   currentUser: User;
   setCurrentUser: (user: User) => void;
-  switchRole: (role: UserRole) => void;
+  switchRole: (role: UserRole) => boolean;
   activeView: ActiveView;
   setActiveView: (view: ActiveView) => void;
 
@@ -138,6 +139,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_USERS;
   });
 
+  const [authenticatedUser, setAuthenticatedUser] = useState<User>(() => users[0]);
   const [currentUser, setCurrentUser] = useState<User>(() => users[0]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [screenMode, setScreenMode] = useState<ScreenMode>('APP');
@@ -197,6 +199,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const login = (email: string, pass: string): boolean => {
     const matched = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (matched) {
+      setAuthenticatedUser(matched);
       setCurrentUser(matched);
       setIsAuthenticated(true);
       setScreenMode('APP');
@@ -210,6 +213,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Default fallback
+    setAuthenticatedUser(users[0]);
     setCurrentUser(users[0]);
     setIsAuthenticated(true);
     setScreenMode('APP');
@@ -226,6 +230,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role
     };
 
+    setAuthenticatedUser(matched);
     setCurrentUser(matched);
     setIsAuthenticated(true);
     setScreenMode('APP');
@@ -243,14 +248,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Signed out of Brightloop Software', 'info');
   };
 
-  // RBAC Permission Checks
-  const canManageCatalog = currentUser.role === 'ADMIN';
-  const canManageIAM = currentUser.role === 'ADMIN';
-  const canManageDiscounts = currentUser.role === 'ADMIN';
+  // Double-Guarded RBAC Permission Checks:
+  // Requires both actual authenticatedUser AND active perspective to be ADMIN
+  const canManageCatalog = authenticatedUser.role === 'ADMIN' && currentUser.role === 'ADMIN';
+  const canManageIAM = authenticatedUser.role === 'ADMIN' && currentUser.role === 'ADMIN';
+  const canManageDiscounts = authenticatedUser.role === 'ADMIN' && currentUser.role === 'ADMIN';
 
-  // Switch Role Handler
-  const switchRole = (role: UserRole) => {
-    loginAsRole(role);
+  // Strict Switch Role Handler with Access Control Enforcement
+  const switchRole = (targetRole: UserRole): boolean => {
+    if (authenticatedUser.role !== 'ADMIN' && targetRole === 'ADMIN') {
+      addToast(
+        `Access Denied: Your account (${authenticatedUser.role}) does not have Administrator privileges!`,
+        'error'
+      );
+      return false;
+    }
+
+    if (authenticatedUser.role === 'CUSTOMER' && targetRole !== 'CUSTOMER') {
+      addToast('Access Denied: Customer accounts cannot switch to internal staff perspectives!', 'error');
+      return false;
+    }
+
+    if (
+      authenticatedUser.role === 'STAFF' &&
+      (targetRole === 'ADMIN' || targetRole === 'FINANCE_LEAD')
+    ) {
+      addToast(
+        'Access Denied: Sales Rep accounts are restricted from Administrator & Finance Lead pages!',
+        'error'
+      );
+      return false;
+    }
+
+    if (authenticatedUser.role === 'FINANCE_LEAD' && targetRole === 'ADMIN') {
+      addToast('Access Denied: Finance Lead accounts cannot elevate to Administrator!', 'error');
+      return false;
+    }
+
+    const matched = users.find((u) => u.role === targetRole) || {
+      id: `usr_${targetRole.toLowerCase()}`,
+      name: `${targetRole} Perspective`,
+      email: `${targetRole.toLowerCase()}@brightloop.io`,
+      role: targetRole
+    };
+
+    setCurrentUser(matched);
+
+    if (targetRole === 'CUSTOMER' && activeView !== 'customer_portal') {
+      setActiveView('customer_portal');
+    }
+
+    addToast(`Switched perspective to ${targetRole}`, 'info');
+    return true;
   };
 
   // Add user (IAM)

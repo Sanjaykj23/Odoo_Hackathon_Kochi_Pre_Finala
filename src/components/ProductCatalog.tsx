@@ -67,6 +67,7 @@ export const ProductCatalog: React.FC = () => {
 
   // Open Edit Product
   const handleOpenEditProduct = (p: Product) => {
+    if (!canManageCatalog) return;
     setEditingProduct(p);
     setProdName(p.name);
     setProdType(p.type);
@@ -81,6 +82,7 @@ export const ProductCatalog: React.FC = () => {
 
   // Open New Product
   const handleOpenNewProduct = () => {
+    if (!canManageCatalog) return;
     setEditingProduct(null);
     setProdName('');
     setProdType('SOFTWARE');
